@@ -69,15 +69,6 @@ docker compose up --build -d
 docker compose run app
 ```
 
-## Переменные окружения
-
-- `ADMIN_API_KEY` - ключ для доступа к административным эндпоинтам
-- `TELEGRAM_BOT_TOKEN` - токен Telegram бота
-- `MONGODB_URI` - URI для подключения к MongoDB
-- `MONGODB_USERNAME` - имя пользователя MongoDB
-- `MONGODB_PASSWORD` - пароль пользователя MongoDB
-- `MONGODB_DATABASE` - имя базы данных
-
 ## Авторы
 - Салимли Айзек
 - Григорьев Петр
