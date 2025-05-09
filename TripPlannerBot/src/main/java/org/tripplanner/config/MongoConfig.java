@@ -27,6 +27,10 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 
     @Override
     public MongoClient reactiveMongoClient() {
+        if (mongoUri == null || mongoUri.isEmpty() || mongoUri.startsWith("${")) {
+            // Fallback to default local MongoDB connection if URI is not properly resolved
+            mongoUri = "mongodb://localhost:27017/tripplanner";
+        }
         System.out.println("Using MongoDB URI: " + mongoUri);
         ConnectionString connectionString = new ConnectionString(mongoUri);
         MongoClientSettings settings = MongoClientSettings.builder()

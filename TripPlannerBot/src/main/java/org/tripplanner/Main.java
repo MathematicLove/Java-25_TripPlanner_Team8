@@ -1,6 +1,10 @@
 package org.tripplanner;
 
+import java.io.IOException;
+import java.util.Properties;
+
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.env.PropertiesPropertySource;
 import org.springframework.http.server.reactive.ReactorHttpHandlerAdapter;
 import org.springframework.web.server.adapter.WebHttpHandlerBuilder;
 import org.tripplanner.config.MongoConfig;
@@ -16,6 +20,16 @@ public class Main {
 
         // Инициализация Spring контекста
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+        
+        // Загрузка properties файла
+        try {
+            Properties props = new Properties();
+            props.load(Main.class.getClassLoader().getResourceAsStream("application.properties"));
+            context.getEnvironment().getPropertySources().addFirst(new PropertiesPropertySource("applicationProperties", props));
+        } catch (IOException e) {
+            System.err.println("Error loading application.properties: " + e.getMessage());
+        }
+
         context.scan("org.tripplanner");
         context.register(WebConfig.class, SecurityConfig.class, MongoConfig.class);
         context.refresh();
