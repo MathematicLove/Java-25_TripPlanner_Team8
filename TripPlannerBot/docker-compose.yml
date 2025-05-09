@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure:3
+    environment:
+      # API-ключ для /admin и /users
+      ADMIN_API_KEY: 48B508EC-E715-48F6-AAC6-8218A1720F8D
+      # Spring-конфигурация через переменные
+      SPRING_DATA_MONGODB_URI: mongodb://host.docker.internal:27017/tripplanner?retryWrites=true&w=majority&connectTimeoutMS=5000&socketTimeoutMS=5000
+      SPRING_DATA_MONGODB_DATABASE: tripplanner
+      TELEGRAM_BOT_TOKEN: 8122345191:AAFNe-Vf1tuvDev0AU_OGC-K0OytFhbkzBg
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
+    container_name: app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 30s
+    stop_signal: SIGTERM
+    init: true
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  app-network:
+    name: trip-planner-network
+    driver: bridge
