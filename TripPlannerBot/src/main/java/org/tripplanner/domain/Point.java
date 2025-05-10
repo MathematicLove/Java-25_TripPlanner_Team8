@@ -4,6 +4,7 @@ import java.util.List;
 
 public class Point {
 
+    private String id;
     private String name;
     private double latitude;
     private double longitude;
@@ -19,6 +20,14 @@ public class Point {
         this.longitude = longitude;
         this.visited = visited;
         this.notes = notes;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
     }
 
     public String getName() {

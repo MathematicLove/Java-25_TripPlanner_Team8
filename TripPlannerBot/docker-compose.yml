@@ -12,7 +12,7 @@ services:
       # Spring-конфигурация через переменные
       SPRING_DATA_MONGODB_URI: mongodb://host.docker.internal:27017/tripplanner?retryWrites=true&w=majority&connectTimeoutMS=5000&socketTimeoutMS=5000
       SPRING_DATA_MONGODB_DATABASE: tripplanner
-      TELEGRAM_BOT_TOKEN: 8122345191:AAFNe-Vf1tuvDev0AU_OGC-K0OytFhbkzBg
+      TELEGRAM_BOT_TOKEN: 7687419368:AAHRuN00r0_WBAkRVQA65e5q2B7zaU8xgHs
     ports:
       - "8080:8080"
     networks:

@@ -7,6 +7,7 @@ public class User {
     private Long chatId;
     private Trip tripInPlanning;
     private List<Trip> plannedTrips;
+    private List<Trip> currentTrips;  // Trips that are not finished yet
     private Trip ongoingTrip;
     private List<Trip> tripHistory;
 
@@ -14,10 +15,11 @@ public class User {
     }
 
     public User(Long chatId, Trip tripInPlanning, List<Trip> plannedTrips,
-                Trip ongoingTrip, List<Trip> tripHistory) {
+                List<Trip> currentTrips, Trip ongoingTrip, List<Trip> tripHistory) {
         this.chatId = chatId;
         this.tripInPlanning = tripInPlanning;
         this.plannedTrips = plannedTrips;
+        this.currentTrips = currentTrips;
         this.ongoingTrip = ongoingTrip;
         this.tripHistory = tripHistory;
     }
@@ -44,6 +46,14 @@ public class User {
 
     public void setPlannedTrips(List<Trip> plannedTrips) {
         this.plannedTrips = plannedTrips;
+    }
+
+    public List<Trip> getCurrentTrips() {
+        return currentTrips;
+    }
+
+    public void setCurrentTrips(List<Trip> currentTrips) {
+        this.currentTrips = currentTrips;
     }
 
     public Trip getOngoingTrip() {

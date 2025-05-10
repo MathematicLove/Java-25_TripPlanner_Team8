@@ -6,7 +6,7 @@ import reactor.core.publisher.Mono;
 
 public interface PointDAO {
 
-    Mono<Point> createPoint(Long chatId, Long tripId, String name, double latitude, double longitude);
+    Mono<Point> createPoint(Long chatId, String tripId, String name, double latitude, double longitude);
 
     Mono<Point> markPointVisited(String pointId);
 

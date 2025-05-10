@@ -1,12 +1,13 @@
 package org.tripplanner.modules.connections;
 
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.meta.TelegramBotsApi;
-import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.api.methods.updates.DeleteWebhook;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
 import org.tripplanner.modules.dialog.TelegramBotController;
 
@@ -16,17 +17,25 @@ import jakarta.annotation.PreDestroy;
 @Component
 public class TelegramBotStarter {
 
+    private static final Logger logger = LoggerFactory.getLogger(TelegramBotStarter.class);
+    private static final int MAX_RETRIES = 3;
+    private static final int RETRY_DELAY_SECONDS = 2;
+    private static final int SHUTDOWN_DELAY_SECONDS = 3;
+
+    @Value("${telegram.bot.token}")
+    private String botToken;
+
+    @Value("${telegram.bot.username}")
+    private String botUsername;
+
+    @Value("${project.authors}")
+    private String authors;
+
     private final TelegramBotController controller;
     private TelegramBotsApi botsApi;
     private TripPlannerBot bot;
     private DefaultBotSession session;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
-
-    @Value("${telegram.bot.token}")
-    private String botToken;
-
-    @Value("${project.authors}")
-    private String authors;
 
     public TelegramBotStarter(TelegramBotController controller) {
         this.controller = controller;
@@ -34,51 +43,83 @@ public class TelegramBotStarter {
 
     @PostConstruct
     public void start() {
-        if (isRunning.compareAndSet(false, true)) {
+        if (!isRunning.compareAndSet(false, true)) {
+            logger.warn("Bot is already running");
+            return;
+        }
+
+        logger.info("Starting Telegram bot...");
+        int retryCount = 0;
+        while (retryCount < MAX_RETRIES) {
             try {
-                // Create bot instance
-                bot = new TripPlannerBot(botToken, "tripplanner_bot", controller);
+                if (retryCount > 0) {
+                    logger.info("Retry attempt {} of {}", retryCount + 1, MAX_RETRIES);
+                    Thread.sleep(RETRY_DELAY_SECONDS * 1000L);
+                }
+
+                // Create new bot instance
+                bot = new TripPlannerBot(botToken, botUsername, controller);
                 
-                // Clear any existing webhook and wait to ensure it's cleared
-                bot.clearWebhook();
-                TimeUnit.SECONDS.sleep(1);
-                
-                // Create new session and register bot
+                // Create new API instance
                 botsApi = new TelegramBotsApi(DefaultBotSession.class);
+
+                // Delete webhook before starting
+                try {
+                    DeleteWebhook deleteWebhook = new DeleteWebhook();
+                    deleteWebhook.setDropPendingUpdates(true);
+                    bot.execute(deleteWebhook);
+                    logger.info("Deleted webhook with dropPendingUpdates=true");
+                    Thread.sleep(1000); // Wait a bit after deleting webhook
+                } catch (Exception e) {
+                    logger.warn("Failed to delete webhook: {}", e.getMessage());
+                }
+                
+                // Register bot
                 session = (DefaultBotSession) botsApi.registerBot(bot);
                 
-                System.out.println("✅ Bot started by: " + authors);
-            } catch (TelegramApiException | InterruptedException e) {
-                isRunning.set(false);
-                System.err.println("❌ Error starting bot: " + e.getMessage());
-                e.printStackTrace();
+                logger.info("✅ Bot started by: {}", authors);
+                return;
+            } catch (Exception e) {
+                retryCount++;
+                logger.error("Failed to start bot (attempt {}/{}): {}", retryCount, MAX_RETRIES, e.getMessage());
+                if (retryCount == MAX_RETRIES) {
+                    logger.error("Failed to start bot after {} attempts", MAX_RETRIES);
+                    isRunning.set(false);
+                    throw new RuntimeException("Failed to start Telegram bot", e);
+                }
             }
         }
     }
 
     @PreDestroy
     public void stop() {
-        if (isRunning.compareAndSet(true, false)) {
-            try {
-                System.out.println("🛑 Stopping bot...");
-                
-                // Stop the session first
-                if (session != null) {
-                    session.stop();
-                    TimeUnit.SECONDS.sleep(1);
-                }
-                
-                // Clear webhook and wait a bit to ensure it's cleared
-                if (bot != null) {
-                    bot.clearWebhook();
-                    TimeUnit.SECONDS.sleep(1);
-                }
-                
-                System.out.println("✅ Bot stopped successfully");
-            } catch (Exception e) {
-                System.err.println("❌ Error stopping bot: " + e.getMessage());
-                e.printStackTrace();
+        if (!isRunning.get()) {
+            return;
+        }
+
+        logger.info("Stopping Telegram bot...");
+        try {
+            if (session != null) {
+                session.stop();
+                logger.info("Stopped bot session");
+                Thread.sleep(SHUTDOWN_DELAY_SECONDS * 1000L);
             }
+
+            if (bot != null) {
+                try {
+                    DeleteWebhook deleteWebhook = new DeleteWebhook();
+                    deleteWebhook.setDropPendingUpdates(true);
+                    bot.execute(deleteWebhook);
+                    logger.info("Final webhook cleanup completed");
+                } catch (Exception e) {
+                    logger.warn("Final webhook cleanup failed: {}", e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error stopping bot: {}", e.getMessage());
+        } finally {
+            isRunning.set(false);
+            logger.info("Bot stopped successfully");
         }
     }
 }

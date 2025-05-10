@@ -1,14 +1,16 @@
 package org.tripplanner.repositories.mongodb;
 
-import java.util.List;
+import java.util.ArrayList;
 
 import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Repository;
 import org.tripplanner.domain.Trip;
 import org.tripplanner.domain.User;
 import org.tripplanner.repositories.TripDAO;
@@ -17,9 +19,10 @@ import org.tripplanner.repositories.UserDAO;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
-@Component
+@Repository
 public class UserDAOImpl implements UserDAO {
 
+    private static final Logger logger = LoggerFactory.getLogger(UserDAOImpl.class);
     private final ReactiveMongoTemplate mongoTemplate;
     private final UserMapper userMapper;
     private final TripDAO tripDAO;
@@ -34,7 +37,11 @@ public class UserDAOImpl implements UserDAO {
         mongoTemplate.indexOps(UserDBO.class)
                 .ensureIndex(new org.springframework.data.mongodb.core.index.Index()
                         .on("chatId", org.springframework.data.domain.Sort.Direction.ASC)
-                        .unique());
+                        .unique())
+                .onErrorResume(e -> {
+                    logger.error("Failed to create index for chatId: {}", e.getMessage());
+                    return Mono.empty();
+                });
     }
 
     @Override
@@ -47,7 +54,7 @@ public class UserDAOImpl implements UserDAO {
                                 .map(userMapper::fromDbo)
                 )
                 .onErrorResume(e -> {
-                    // Если произошла ошибка из-за дубликата, просто получаем существующего пользователя
+                    logger.error("Error in getOrCreateUser for chatId {}: {}", chatId, e.getMessage());
                     if (e.getMessage().contains("duplicate key error")) {
                         return mongoTemplate.findOne(query, UserDBO.class)
                                 .map(userMapper::fromDbo);
@@ -56,99 +63,90 @@ public class UserDAOImpl implements UserDAO {
                 });
     }
 
-    private UserDBO newUserDbo(Long chatId) {
-        UserDBO dbo = new UserDBO();
-        dbo.setId(new ObjectId());
-        dbo.setChatId(chatId);
-        dbo.setTripInPlanning(null);
-        dbo.setPlannedTrips(List.of());
-        dbo.setOngoingTrip(null);
-        dbo.setTripHistory(List.of());
-        return dbo;
-    }
     @Override
     public Flux<User> getAllUsers() {
         return mongoTemplate.findAll(UserDBO.class)
-                .map(userMapper::fromDbo);
+                .map(userMapper::fromDbo)
+                .onErrorResume(e -> {
+                    logger.error("Error in getAllUsers: {}", e.getMessage());
+                    return Flux.error(e);
+                });
     }
 
     @Override
     public Flux<Trip> getAllPlannedTrips(Long chatId) {
         return mongoTemplate.findOne(
-                        Query.query(Criteria.where("chatId").is(chatId)),
-                        UserDBO.class
-                )
-                .doOnNext(user -> System.out.println("Found user: " + user.getChatId() + 
-                        ", planned trips: " + (user.getPlannedTrips() != null ? user.getPlannedTrips().size() : 0)))
-                .switchIfEmpty(mongoTemplate.insert(newUserDbo(chatId)))
+                Query.query(Criteria.where("chatId").is(chatId)),
+                UserDBO.class
+        )
                 .flatMapMany(user -> {
                     if (user.getPlannedTrips() == null || user.getPlannedTrips().isEmpty()) {
-                        System.out.println("No planned trips found for user: " + user.getChatId());
                         return Flux.empty();
                     }
-
-                    List<String> tripIds = user.getPlannedTrips().stream()
-                            .map(ObjectId::toHexString)
-                            .toList();
-                    
-                    System.out.println("Trip IDs to fetch: " + tripIds);
-
-                    return Flux.fromIterable(tripIds)
-                            .concatMap(tripId -> {
-                                System.out.println("Starting to fetch trip with ID: " + tripId);
-                                return tripDAO.getTrip(tripId)
-                                        .doOnNext(trip -> System.out.println("Successfully fetched trip: " + trip.getName() + " with ID: " + trip.getId()))
-                                        .doOnError(e -> System.out.println("Error fetching trip " + tripId + ": " + e.getMessage()))
-                                        .onErrorResume(e -> {
-                                            System.out.println("Error fetching trip " + tripId + ": " + e.getMessage());
-                                            return Mono.empty();
-                                        });
-                            })
-                            .doOnNext(trip -> System.out.println("About to emit trip: " + trip.getName() + " with ID: " + trip.getId()))
-                            .doOnComplete(() -> System.out.println("Finished emitting all trips"))
-                            .doOnError(e -> System.out.println("Error in trip emission: " + e.getMessage()));
+                    return Flux.fromIterable(user.getPlannedTrips())
+                            .flatMap(tripId -> tripDAO.getTrip(tripId.toHexString())
+                                    .onErrorResume(e -> {
+                                        logger.error("Error getting trip {} for user {}: {}", 
+                                            tripId, chatId, e.getMessage());
+                                        return Mono.empty();
+                                    }));
                 })
-                .doOnError(e -> System.out.println("Error in getAllPlannedTrips: " + e.getMessage()));
+                .onErrorResume(e -> {
+                    logger.error("Error in getAllPlannedTrips for chatId {}: {}", chatId, e.getMessage());
+                    return Flux.error(e);
+                });
     }
-
 
     @Override
     public Mono<Trip> getTripInPlanning(Long chatId) {
         return mongoTemplate.findOne(
-                        Query.query(Criteria.where("chatId").is(chatId)),
-                        UserDBO.class
-                )
+                Query.query(Criteria.where("chatId").is(chatId)),
+                UserDBO.class
+        )
                 .flatMap(user -> {
                     if (user.getTripInPlanning() == null) return Mono.empty();
-                    return tripDAO.getTrip(user.getTripInPlanning().toHexString());
+                    return tripDAO.getTrip(user.getTripInPlanning().toHexString())
+                            .onErrorResume(e -> {
+                                logger.error("Error getting trip in planning for user {}: {}", 
+                                    chatId, e.getMessage());
+                                return Mono.empty();
+                            });
+                })
+                .onErrorResume(e -> {
+                    logger.error("Error in getTripInPlanning for chatId {}: {}", chatId, e.getMessage());
+                    return Mono.error(e);
                 });
     }
-
 
     @Override
     public Mono<Trip> finishPlanning(Long chatId) {
         Query query = Query.query(Criteria.where("chatId").is(chatId));
-
         return mongoTemplate.findOne(query, UserDBO.class)
                 .flatMap(user -> {
                     ObjectId tripId = user.getTripInPlanning();
                     if (tripId == null) return Mono.empty();
 
-                    // Обновить пользователя: добавить в plannedTrips и сбросить tripInPlanning
                     Update update = new Update()
                             .addToSet("plannedTrips", tripId)
                             .unset("tripInPlanning");
 
                     return mongoTemplate.findAndModify(query, update, UserDBO.class)
-                            .flatMap(updatedUser -> tripDAO.getTrip(tripId.toHexString()));
+                            .flatMap(updatedUser -> tripDAO.getTrip(tripId.toHexString())
+                                    .onErrorResume(e -> {
+                                        logger.error("Error getting trip after finishing planning for user {}: {}", 
+                                            chatId, e.getMessage());
+                                        return Mono.empty();
+                                    }));
+                })
+                .onErrorResume(e -> {
+                    logger.error("Error in finishPlanning for chatId {}: {}", chatId, e.getMessage());
+                    return Mono.error(e);
                 });
     }
-
 
     @Override
     public Mono<Trip> cancelPlanning(Long chatId) {
         Query query = Query.query(Criteria.where("chatId").is(chatId));
-
         return mongoTemplate.findOne(query, UserDBO.class)
                 .flatMap(user -> {
                     ObjectId tripId = user.getTripInPlanning();
@@ -157,10 +155,18 @@ public class UserDAOImpl implements UserDAO {
                     Update update = new Update().unset("tripInPlanning");
 
                     return mongoTemplate.findAndModify(query, update, UserDBO.class)
-                            .flatMap(u -> tripDAO.getTrip(tripId.toHexString()));
+                            .flatMap(u -> tripDAO.getTrip(tripId.toHexString())
+                                    .onErrorResume(e -> {
+                                        logger.error("Error getting trip after canceling planning for user {}: {}", 
+                                            chatId, e.getMessage());
+                                        return Mono.empty();
+                                    }));
+                })
+                .onErrorResume(e -> {
+                    logger.error("Error in cancelPlanning for chatId {}: {}", chatId, e.getMessage());
+                    return Mono.error(e);
                 });
     }
-
 
     @Override
     public Mono<Trip> deletePlannedTrip(Long chatId, String tripId) {
@@ -169,44 +175,83 @@ public class UserDAOImpl implements UserDAO {
         Update update = new Update().pull("plannedTrips", tripObjectId);
 
         return mongoTemplate.findAndModify(query, update, UserDBO.class)
-                .flatMap(user -> tripDAO.getTrip(tripId));
-    }
-
-
-    @Override
-    public Mono<Trip> getOngoingTrip(Long chatId) {
-        return mongoTemplate.findOne(
-                        Query.query(Criteria.where("chatId").is(chatId)),
-                        UserDBO.class
-                )
-                .flatMap(user -> {
-                    ObjectId tripId = user.getOngoingTrip();
-                    if (tripId == null) return Mono.empty();
-                    return tripDAO.getTrip(tripId.toHexString());
+                .flatMap(user -> tripDAO.getTrip(tripId)
+                        .onErrorResume(e -> {
+                            logger.error("Error getting trip after deletion for user {}: {}", 
+                                chatId, e.getMessage());
+                            return Mono.empty();
+                        }))
+                .onErrorResume(e -> {
+                    logger.error("Error in deletePlannedTrip for chatId {} and tripId {}: {}", 
+                        chatId, tripId, e.getMessage());
+                    return Mono.error(e);
                 });
     }
 
+    @Override
+    public Flux<Trip> getCurrentTrips(Long chatId) {
+        Query query = new Query(Criteria.where("chatId").is(chatId));
+        return mongoTemplate.findOne(query, UserDBO.class)
+                .flatMapMany(userDBO -> {
+                    if (userDBO.getCurrentTrips() == null || userDBO.getCurrentTrips().isEmpty()) {
+                        return Flux.empty();
+                    }
+                    return Flux.fromIterable(userDBO.getCurrentTrips())
+                            .flatMap(tripId -> tripDAO.getTrip(tripId.toHexString())
+                                    .onErrorResume(e -> {
+                                        logger.error("Error getting current trip {} for user {}: {}", 
+                                            tripId, chatId, e.getMessage());
+                                        return Mono.empty();
+                                    }));
+                })
+                .onErrorResume(e -> {
+                    logger.error("Error in getCurrentTrips for chatId {}: {}", chatId, e.getMessage());
+                    return Flux.error(e);
+                });
+    }
 
     @Override
     public Flux<Trip> getFinishedTrips(Long chatId) {
-        return mongoTemplate.findOne(
-                        Query.query(Criteria.where("chatId").is(chatId)),
-                        UserDBO.class
-                )
-                .flatMapMany(user -> {
-                    if (user.getTripHistory() == null || user.getTripHistory().isEmpty()) {
+        Query query = new Query(Criteria.where("chatId").is(chatId));
+        return mongoTemplate.findOne(query, UserDBO.class)
+                .flatMapMany(userDBO -> {
+                    if (userDBO.getTripHistory() == null || userDBO.getTripHistory().isEmpty()) {
                         return Flux.empty();
                     }
-
-                    List<String> tripIds = user.getTripHistory().stream()
-                            .map(ObjectId::toHexString)
-                            .toList();
-
-                    return Flux.fromIterable(tripIds)
-                            .flatMap(tripDAO::getTrip);
+                    return Flux.fromIterable(userDBO.getTripHistory())
+                            .flatMap(tripId -> tripDAO.getTrip(tripId.toHexString())
+                                    .onErrorResume(e -> {
+                                        logger.error("Error getting finished trip {} for user {}: {}", 
+                                            tripId, chatId, e.getMessage());
+                                        return Mono.empty();
+                                    }));
+                })
+                .onErrorResume(e -> {
+                    logger.error("Error in getFinishedTrips for chatId {}: {}", chatId, e.getMessage());
+                    return Flux.error(e);
                 });
     }
 
+    @Override
+    public Mono<Void> updateUserLocation(Long chatId, double latitude, double longitude) {
+        Query query = new Query(Criteria.where("chatId").is(chatId));
+        Update update = new Update()
+                .set("location.latitude", latitude)
+                .set("location.longitude", longitude);
+        return mongoTemplate.updateFirst(query, update, UserDBO.class)
+                .then()
+                .onErrorResume(e -> {
+                    logger.error("Error updating location for user {}: {}", chatId, e.getMessage());
+                    return Mono.error(e);
+                });
+    }
 
-    // Остальные методы будут реализованы позже
+    private UserDBO newUserDbo(Long chatId) {
+        UserDBO dbo = new UserDBO();
+        dbo.setChatId(chatId);
+        dbo.setPlannedTrips(new ArrayList<>());
+        dbo.setCurrentTrips(new ArrayList<>());
+        dbo.setTripHistory(new ArrayList<>());
+        return dbo;
+    }
 }

@@ -27,6 +27,11 @@ public class UserMapper {
                     .map(trip -> new ObjectId(trip.getId()))
                     .collect(Collectors.toList()));
         }
+        if (user.getCurrentTrips() != null) {
+            dbo.setCurrentTrips(user.getCurrentTrips().stream()
+                    .map(trip -> new ObjectId(trip.getId()))
+                    .collect(Collectors.toList()));
+        }
         if (user.getTripHistory() != null) {
             dbo.setTripHistory(user.getTripHistory().stream()
                     .map(trip -> new ObjectId(trip.getId()))
@@ -46,6 +51,7 @@ public class UserMapper {
         user.setTripInPlanning(null);
         user.setOngoingTrip(null);
         user.setPlannedTrips(Collections.emptyList());
+        user.setCurrentTrips(Collections.emptyList());
         user.setTripHistory(Collections.emptyList());
 
         return user;

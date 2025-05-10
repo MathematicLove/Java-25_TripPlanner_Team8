@@ -48,7 +48,7 @@ public class DialogState {
         private Step getInitialStep(Command command) {
             return switch (command) {
                 case PLAN_TRIP -> Step.WAITING_NAME;
-                case ADD_POINT -> Step.WAITING_POINT_NAME;
+                case ADD_POINT -> Step.WAITING_TRIP_NAME;
                 case SET_START_POINT -> Step.WAITING_TRIP_NAME;
                 case ADD_ROUTE -> Step.WAITING_TRIP_NAME;
                 case FINISH_PLANNING -> Step.WAITING_TRIP_NAME;
@@ -61,7 +61,7 @@ public class DialogState {
 
     private final Map<Long, CommandState> states = new HashMap<>();
     private static final Pattern LATIN_PATTERN = Pattern.compile("^[a-zA-Z0-9\\s]+$");
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final Pattern COORDINATES_PATTERN = Pattern.compile("^(-?\\d+(\\.\\d+)?),\\s*(-?\\d+(\\.\\d+)?)$");
 
     public void startDialog(Long chatId, Command command) {
@@ -108,6 +108,7 @@ public class DialogState {
                 default -> null;
             };
             case ADD_POINT -> switch (currentStep) {
+                case WAITING_TRIP_NAME -> Step.WAITING_POINT_NAME;
                 case WAITING_POINT_NAME -> Step.WAITING_LATITUDE;
                 case WAITING_LATITUDE -> Step.WAITING_LONGITUDE;
                 case WAITING_LONGITUDE -> null;
@@ -150,15 +151,15 @@ public class DialogState {
         if (state == null) return null;
 
         return switch (state.currentStep) {
-            case WAITING_NAME -> "Введите название поездки (только латинские буквы и цифры):";
-            case WAITING_START_DATE -> "Введите дату начала поездки (формат: dd.MM.yyyy):";
-            case WAITING_END_DATE -> "Введите дату окончания поездки (формат: dd.MM.yyyy):";
-            case WAITING_POINT_NAME -> "Введите название точки (только латинские буквы и цифры):";
+            case WAITING_NAME -> "Как Вы хотите назвать поездку? (только латиница)";
+            case WAITING_START_DATE -> "Когда Вы планируете начать поездку? (Ввод YYYY-MM-DD)";
+            case WAITING_END_DATE -> "Когда Вы планируете завершить поездку? (Ввод YYYY-MM-DD)";
+            case WAITING_TRIP_NAME -> "Введите название поездки:";
+            case WAITING_POINT_NAME -> "Введите название точки (только латиница):";
             case WAITING_LATITUDE -> "Введите широту (-90 до 90):";
             case WAITING_LONGITUDE -> "Введите долготу (-180 до 180):";
-            case WAITING_TRIP_NAME -> "Введите название поездки:";
             case WAITING_POINT_ID -> "Введите ID точки:";
-            case WAITING_ROUTE_DATE -> "Введите дату маршрута (формат: dd.MM.yyyy):";
+            case WAITING_ROUTE_DATE -> "Введите дату маршрута (формат: YYYY-MM-DD):";
             case WAITING_NOTE -> "Введите заметку:";
             case WAITING_RATING -> "Введите оценку (от 1 до 5):";
             case WAITING_POINT_COORDINATES -> "Введите координаты точки в формате 'широта, долгота' (например: 37.9601, 58.3261):";
@@ -186,8 +187,8 @@ public class DialogState {
         if (state == null) return "Ошибка: диалог не найден";
 
         return switch (state.currentStep) {
-            case WAITING_NAME, WAITING_POINT_NAME, WAITING_TRIP_NAME -> "Название должно содержать только латинские буквы и цифры";
-            case WAITING_START_DATE, WAITING_END_DATE, WAITING_ROUTE_DATE -> "Неверный формат даты. Используйте формат dd.MM.yyyy";
+            case WAITING_NAME, WAITING_POINT_NAME, WAITING_TRIP_NAME -> "Упс! Только латыница";
+            case WAITING_START_DATE, WAITING_END_DATE, WAITING_ROUTE_DATE -> "Упс! Указанное время прошло! Оно летит быстро :(";
             case WAITING_LATITUDE -> "Широта должна быть числом от -90 до 90";
             case WAITING_LONGITUDE -> "Долгота должна быть числом от -180 до 180";
             case WAITING_POINT_ID -> "ID точки не может быть пустым";

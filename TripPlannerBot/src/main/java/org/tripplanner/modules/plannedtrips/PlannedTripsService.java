@@ -44,10 +44,12 @@ public class PlannedTripsService {
     }
 
     public Mono<Point> createPoint(String tripId, String name, double latitude, double longitude) {
-        return pointDAO.createPoint(null, Long.parseLong(tripId), name, latitude, longitude)
+        return pointDAO.createPoint(0L, tripId, name, latitude, longitude)
                 .flatMap(point -> {
-                    String pointId = new ObjectId().toHexString();
-                    return tripDAO.addPoint(tripId, pointId).thenReturn(point);
+                    if (point.getId() == null) {
+                        return Mono.error(new IllegalStateException("Point ID is null after creation"));
+                    }
+                    return tripDAO.addPoint(tripId, point.getId()).thenReturn(point);
                 });
     }
 

@@ -175,10 +175,11 @@ public class TelegramBotController {
                 yield plannedTrips.handlePlanTrip(chatId, name, startDate, endDate);
             }
             case ADD_POINT -> {
+                String tripName = (String) dialogState.getData(chatId, "tripName");
                 String pointName = (String) dialogState.getData(chatId, "pointName");
                 double latitude = Double.parseDouble((String) dialogState.getData(chatId, "latitude"));
                 double longitude = Double.parseDouble((String) dialogState.getData(chatId, "longitude"));
-                yield plannedTrips.handleAddPoint(String.valueOf(chatId), pointName, latitude, longitude);
+                yield plannedTrips.handleAddPoint(chatId, tripName, pointName, latitude, longitude);
             }
             case SET_START_POINT -> {
                 String tripName = (String) dialogState.getData(chatId, "tripName");

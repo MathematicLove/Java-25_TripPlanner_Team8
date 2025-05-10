@@ -27,7 +27,7 @@ public class PointDAOImpl implements PointDAO {
     }
 
     @Override
-    public Mono<Point> createPoint(Long chatId, Long tripId, String name, double latitude, double longitude) {
+    public Mono<Point> createPoint(Long chatId, String tripId, String name, double latitude, double longitude) {
         Point point = new Point(name, latitude, longitude, false, Collections.emptyList());
         PointDBO dbo = pointMapper.toDbo(point);
         return mongoTemplate.insert(dbo)

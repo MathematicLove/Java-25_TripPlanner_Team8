@@ -14,7 +14,7 @@ public class PlannedTripsController {
 
     private final PlannedTripsService service;
     private final TripDAOImpl tripDAO;
-    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     public PlannedTripsController(PlannedTripsService service, TripDAOImpl tripDAO) {
         this.service = service;
@@ -63,6 +63,15 @@ public class PlannedTripsController {
         try {
             LocalDate start = LocalDate.parse(startDate, DATE_FORMATTER);
             LocalDate end = LocalDate.parse(endDate, DATE_FORMATTER);
+            LocalDate today = LocalDate.now();
+
+            if (start.isBefore(today)) {
+                return Mono.just("Упс! Указанное время прошло! Оно летит быстро :(");
+            }
+
+            if (end.isBefore(today)) {
+                return Mono.just("Упс! Указанное время прошло! Оно летит быстро :(");
+            }
 
             if (start.isAfter(end)) {
                 return Mono.just("Дата начала не может быть позже даты окончания");
@@ -72,13 +81,17 @@ public class PlannedTripsController {
                     .map(trip -> "Поездка успешно создана!")
                     .onErrorResume(e -> Mono.just("Ошибка при создании поездки: " + e.getMessage()));
         } catch (Exception e) {
-            return Mono.just("Неверный формат даты. Используйте формат dd.MM.yyyy");
+            return Mono.just("Неверный формат даты. Используйте формат YYYY-MM-DD");
         }
     }
 
-    public Mono<String> handleAddPoint(String tripId, String name, double lat, double lon) {
-        return service.createPoint(tripId, name, lat, lon)
-                .map(point -> "Точка \"" + point.getName() + "\" добавлена.");
+    public Mono<String> handleAddPoint(Long chatId, String tripName, String name, double lat, double lon) {
+        return service.getAllPlannedTrips(chatId)
+                .filter(trip -> trip.getName().equals(tripName))
+                .next()
+                .flatMap(trip -> service.createPoint(trip.getId(), name, lat, lon)
+                        .map(point -> "Точка \"" + point.getName() + "\" добавлена."))
+                .switchIfEmpty(Mono.just("Такой поездки нет! Если хотите создать поездку воспользуйтесь: /plantrip или просмотрите свои поездки с помощью: /showplanned"));
     }
 
     public Mono<String> handleSetStartPoint(String tripId, double latitude, double longitude) {

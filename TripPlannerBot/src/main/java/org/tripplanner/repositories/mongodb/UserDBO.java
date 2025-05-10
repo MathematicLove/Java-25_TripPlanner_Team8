@@ -14,21 +14,23 @@ public class UserDBO {
 
     private Long chatId;
 
-    private ObjectId  tripInPlanning;
-    private ObjectId  ongoingTrip;
+    private ObjectId tripInPlanning;
+    private ObjectId ongoingTrip;
 
-    private List<ObjectId > plannedTrips;
-    private List<ObjectId > tripHistory;
+    private List<ObjectId> plannedTrips;
+    private List<ObjectId> currentTrips;  // Trips that are not finished yet
+    private List<ObjectId> tripHistory;
 
     // Конструкторы
     public UserDBO() {}
 
-    public UserDBO(Long chatId, ObjectId  tripInPlanning, ObjectId  ongoingTrip,
-                   List<ObjectId > plannedTrips, List<ObjectId > tripHistory) {
+    public UserDBO(Long chatId, ObjectId tripInPlanning, ObjectId ongoingTrip,
+                   List<ObjectId> plannedTrips, List<ObjectId> currentTrips, List<ObjectId> tripHistory) {
         this.chatId = chatId;
         this.tripInPlanning = tripInPlanning;
         this.ongoingTrip = ongoingTrip;
         this.plannedTrips = plannedTrips;
+        this.currentTrips = currentTrips;
         this.tripHistory = tripHistory;
     }
 
@@ -49,35 +51,43 @@ public class UserDBO {
         this.chatId = chatId;
     }
 
-    public ObjectId  getTripInPlanning() {
+    public ObjectId getTripInPlanning() {
         return tripInPlanning;
     }
 
-    public void setTripInPlanning(ObjectId  tripInPlanning) {
+    public void setTripInPlanning(ObjectId tripInPlanning) {
         this.tripInPlanning = tripInPlanning;
     }
 
-    public ObjectId  getOngoingTrip() {
+    public ObjectId getOngoingTrip() {
         return ongoingTrip;
     }
 
-    public void setOngoingTrip(ObjectId  ongoingTrip) {
+    public void setOngoingTrip(ObjectId ongoingTrip) {
         this.ongoingTrip = ongoingTrip;
     }
 
-    public List<ObjectId > getPlannedTrips() {
+    public List<ObjectId> getPlannedTrips() {
         return plannedTrips;
     }
 
-    public void setPlannedTrips(List<ObjectId > plannedTrips) {
+    public void setPlannedTrips(List<ObjectId> plannedTrips) {
         this.plannedTrips = plannedTrips;
     }
 
-    public List<ObjectId > getTripHistory() {
+    public List<ObjectId> getCurrentTrips() {
+        return currentTrips;
+    }
+
+    public void setCurrentTrips(List<ObjectId> currentTrips) {
+        this.currentTrips = currentTrips;
+    }
+
+    public List<ObjectId> getTripHistory() {
         return tripHistory;
     }
 
-    public void setTripHistory(List<ObjectId > tripHistory) {
+    public void setTripHistory(List<ObjectId> tripHistory) {
         this.tripHistory = tripHistory;
     }
 }

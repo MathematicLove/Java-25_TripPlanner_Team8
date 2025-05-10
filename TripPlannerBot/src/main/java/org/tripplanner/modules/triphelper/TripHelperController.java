@@ -19,10 +19,17 @@ public class TripHelperController {
                 .collectList()
                 .map(trips -> {
                     if (trips.isEmpty()) return "У вас нет активной поездки.";
-                    Trip trip = trips.get(0); // предполагается 1 активная поездка
-                    return "Активная поездка:\n" +
-                            trip.getName() + " (" +
-                            trip.getStartDate() + " — " + trip.getEndDate() + ")";
+                    StringBuilder sb = new StringBuilder("Активные поездки:\n");
+                    for (Trip trip : trips) {
+                        if (trip.getEndDate().isAfter(java.time.LocalDate.now()) && 
+                            !trip.getStartDate().isAfter(java.time.LocalDate.now())) {
+                            sb.append("• ").append(trip.getName())
+                                    .append(" (").append(trip.getStartDate())
+                                    .append(" — ").append(trip.getEndDate()).append(")\n");
+                        }
+                    }
+                    String response = sb.toString();
+                    return response.equals("Активные поездки:\n") ? "У вас нет активной поездки." : response;
                 });
     }
 

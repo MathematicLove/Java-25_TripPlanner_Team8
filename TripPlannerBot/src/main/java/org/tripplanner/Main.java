@@ -45,7 +45,7 @@ public class Main {
             System.out.println("🛑 Завершение работы...");
             try {
                 // Даем время на корректное завершение работы бота
-                Thread.sleep(1000);
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }

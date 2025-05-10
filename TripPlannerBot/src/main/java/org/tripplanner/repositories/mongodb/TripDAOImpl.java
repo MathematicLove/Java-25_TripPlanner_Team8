@@ -62,14 +62,18 @@ public class TripDAOImpl implements TripDAO {
 
     @Override
     public Mono<Trip> addPoint(String tripId, String pointId) {
-        ObjectId tripObjectId = new ObjectId(tripId);
-        ObjectId pointObjectId = new ObjectId(pointId);
+        try {
+            ObjectId tripObjectId = new ObjectId(tripId);
+            ObjectId pointObjectId = new ObjectId(pointId);
 
-        Query query = Query.query(Criteria.where("_id").is(tripObjectId));
-        Update update = new Update().addToSet("points", pointObjectId);
+            Query query = Query.query(Criteria.where("_id").is(tripObjectId));
+            Update update = new Update().addToSet("points", pointObjectId);
 
-        return mongoTemplate.findAndModify(query, update, TripDBO.class)
-                .map(tripMapper::fromDbo);
+            return mongoTemplate.findAndModify(query, update, TripDBO.class)
+                    .map(tripMapper::fromDbo);
+        } catch (IllegalArgumentException e) {
+            return Mono.error(new IllegalArgumentException("Invalid ObjectId format: " + e.getMessage()));
+        }
     }
 
 
