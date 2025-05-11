@@ -1,6 +1,9 @@
 package org.tripplanner.domain;
 
+import java.util.ArrayList;
 import java.util.List;
+
+import org.bson.types.ObjectId;
 
 public class User {
 
@@ -10,6 +13,7 @@ public class User {
     private List<Trip> currentTrips;  // Trips that are not finished yet
     private Trip ongoingTrip;
     private List<Trip> tripHistory;
+    private List<ObjectId> points;
 
     public User() {
     }
@@ -70,5 +74,13 @@ public class User {
 
     public void setTripHistory(List<Trip> tripHistory) {
         this.tripHistory = tripHistory;
+    }
+
+    public List<ObjectId> getPoints() {
+        return points != null ? points : new ArrayList<>();
+    }
+
+    public void setPoints(List<ObjectId> points) {
+        this.points = points;
     }
 }

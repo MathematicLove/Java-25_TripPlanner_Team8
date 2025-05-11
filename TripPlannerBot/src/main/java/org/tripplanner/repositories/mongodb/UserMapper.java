@@ -1,10 +1,10 @@
 package org.tripplanner.repositories.mongodb;
 
-import java.util.Collections;
 import java.util.stream.Collectors;
 
 import org.bson.types.ObjectId;
 import org.springframework.stereotype.Component;
+import org.tripplanner.domain.Trip;
 import org.tripplanner.domain.User;
 
 @Component
@@ -37,6 +37,7 @@ public class UserMapper {
                     .map(trip -> new ObjectId(trip.getId()))
                     .collect(Collectors.toList()));
         }
+        dbo.setPoints(user.getPoints());
 
         return dbo;
     }
@@ -46,13 +47,46 @@ public class UserMapper {
 
         User user = new User();
         user.setChatId(dbo.getChatId());
+        user.setPoints(dbo.getPoints());
 
-        // Trip-сущности загружаются в сервисе, пока null или пустые
-        user.setTripInPlanning(null);
-        user.setOngoingTrip(null);
-        user.setPlannedTrips(Collections.emptyList());
-        user.setCurrentTrips(Collections.emptyList());
-        user.setTripHistory(Collections.emptyList());
+        // Создаем временные объекты Trip с ID для последующей загрузки
+        if (dbo.getTripInPlanning() != null) {
+            Trip trip = new Trip();
+            trip.setId(dbo.getTripInPlanning().toHexString());
+            user.setTripInPlanning(trip);
+        }
+        if (dbo.getOngoingTrip() != null) {
+            Trip trip = new Trip();
+            trip.setId(dbo.getOngoingTrip().toHexString());
+            user.setOngoingTrip(trip);
+        }
+        if (dbo.getPlannedTrips() != null) {
+            user.setPlannedTrips(dbo.getPlannedTrips().stream()
+                    .map(id -> {
+                        Trip trip = new Trip();
+                        trip.setId(id.toHexString());
+                        return trip;
+                    })
+                    .collect(Collectors.toList()));
+        }
+        if (dbo.getCurrentTrips() != null) {
+            user.setCurrentTrips(dbo.getCurrentTrips().stream()
+                    .map(id -> {
+                        Trip trip = new Trip();
+                        trip.setId(id.toHexString());
+                        return trip;
+                    })
+                    .collect(Collectors.toList()));
+        }
+        if (dbo.getTripHistory() != null) {
+            user.setTripHistory(dbo.getTripHistory().stream()
+                    .map(id -> {
+                        Trip trip = new Trip();
+                        trip.setId(id.toHexString());
+                        return trip;
+                    })
+                    .collect(Collectors.toList()));
+        }
 
         return user;
     }

@@ -3,6 +3,8 @@ package org.tripplanner.modules.plannedtrips;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.tripplanner.domain.Trip;
 import org.tripplanner.repositories.mongodb.TripDAOImpl;
@@ -15,6 +17,7 @@ public class PlannedTripsController {
     private final PlannedTripsService service;
     private final TripDAOImpl tripDAO;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final Logger logger = LoggerFactory.getLogger(PlannedTripsController.class);
 
     public PlannedTripsController(PlannedTripsService service, TripDAOImpl tripDAO) {
         this.service = service;
@@ -61,8 +64,8 @@ public class PlannedTripsController {
 
     public Mono<String> handlePlanTrip(Long chatId, String name, String startDate, String endDate) {
         try {
-            LocalDate start = LocalDate.parse(startDate, DATE_FORMATTER);
-            LocalDate end = LocalDate.parse(endDate, DATE_FORMATTER);
+            LocalDate start = LocalDate.parse(startDate);
+            LocalDate end = LocalDate.parse(endDate);
             LocalDate today = LocalDate.now();
 
             if (start.isBefore(today)) {
@@ -94,19 +97,44 @@ public class PlannedTripsController {
                 .switchIfEmpty(Mono.just("Такой поездки нет! Если хотите создать поездку воспользуйтесь: /plantrip или просмотрите свои поездки с помощью: /showplanned"));
     }
 
-    public Mono<String> handleSetStartPoint(String tripId, double latitude, double longitude) {
-        return service.setStartPoint(tripId, latitude, longitude)
-                .map(trip -> "✅ Стартовая точка успешно добавлена!");
-    }
-
-    public Mono<String> handleAddRoute(String tripId, String pointToId, String date) {
-        return service.createRoute(tripId, pointToId, LocalDate.parse(date))
-                .map(p -> "Маршрут к точке \"" + p.getName() + "\" добавлен.");
+    public Mono<String> handleAddRoute(Long chatId, String tripName, String pointName, String routeDate) {
+        return service.getAllPlannedTrips(chatId)
+                .filter(trip -> trip.getName().equals(tripName))
+                .next()
+                .flatMap(trip -> service.addRoute(trip.getId(), pointName, routeDate)
+                        .map(route -> "Маршрут добавлен на " + routeDate + "."))
+                .switchIfEmpty(Mono.just("Такой поездки нет! Если хотите создать поездку воспользуйтесь: /plantrip или просмотрите свои поездки с помощью: /showplanned"));
     }
 
     public Mono<String> handleFinishPlanning(Long chatId) {
-        return service.finishPlanning(chatId)
-                .map(trip -> "Поездка \"" + trip.getName() + "\" перенесена в запланированные.");
+        logger.info("Запрос на завершение планирования для пользователя {}", chatId);
+        return service.getAllPlannedTrips(chatId)
+                .collectList()
+                .flatMap(trips -> {
+                    if (trips.isEmpty()) {
+                        logger.info("У пользователя {} нет запланированных поездок", chatId);
+                        return Mono.just("У вас нет запланированных поездок.");
+                    }
+
+                    StringBuilder sb = new StringBuilder("Выберите поездку для завершения планирования:\n");
+                    for (Trip trip : trips) {
+                        sb.append("• ").append(trip.getName())
+                                .append(" (").append(trip.getStartDate())
+                                .append(" — ").append(trip.getEndDate()).append(")\n");
+                    }
+                    String response = sb.toString();
+                    logger.info("Найдены поездки для пользователя {}: {}", chatId, response);
+                    return Mono.just(response);
+                })
+                .onErrorResume(e -> {
+                    logger.error("Ошибка при получении списка поездок для пользователя {}: {}", 
+                        chatId, e.getMessage());
+                    return Mono.just("Произошла ошибка при получении списка поездок. Попробуйте позже.");
+                });
+    }
+
+    public Mono<Trip> handleFinishPlanningWithName(Long chatId, String tripName) {
+        return service.finishPlanning(chatId, tripName);
     }
 
     public Mono<String> handleCancelPlanning(Long chatId) {
@@ -114,8 +142,12 @@ public class PlannedTripsController {
                 .map(trip -> "Планирование поездки \"" + trip.getName() + "\" отменено.");
     }
 
-    public Mono<String> handleDeletePlanned(Long chatId, String tripId) {
-        return service.deletePlannedTrip(chatId, tripId)
-                .map(trip -> "Поездка \"" + trip.getName() + "\" удалена.");
+    public Mono<String> handleDeletePlanned(Long chatId, String tripName) {
+        return service.getAllPlannedTrips(chatId)
+                .filter(trip -> trip.getName().equals(tripName))
+                .next()
+                .flatMap(trip -> service.deletePlannedTrip(chatId, trip.getId())
+                        .then(Mono.just("Поездка \"" + tripName + "\" успешно удалена.")))
+                .switchIfEmpty(Mono.just("Такой поездки нет! Если хотите создать поездку воспользуйтесь: /plantrip или просмотрите свои поездки с помощью: /showplanned"));
     }
 }

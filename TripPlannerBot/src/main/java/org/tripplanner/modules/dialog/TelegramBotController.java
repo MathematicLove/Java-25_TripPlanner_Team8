@@ -1,9 +1,13 @@
 package org.tripplanner.modules.dialog;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.tripplanner.modules.plannedtrips.PlannedTripsController;
 import org.tripplanner.modules.triphelper.TripHelperController;
+import org.tripplanner.modules.triphelper.TripHelperService;
 import org.tripplanner.modules.triphistory.TripHistoryController;
+import org.tripplanner.repositories.UserDAO;
 
 import reactor.core.publisher.Mono;
 
@@ -13,21 +17,35 @@ public class TelegramBotController {
     private final PlannedTripsController plannedTrips;
     private final TripHelperController tripHelper;
     private final TripHistoryController tripHistory;
+    private final TripHelperService tripHelperService;
     private final DialogState dialogState;
+    private final UserDAO userDAO;
+    private static final Logger logger = LoggerFactory.getLogger(TelegramBotController.class);
 
     public TelegramBotController(PlannedTripsController plannedTrips,
                                TripHelperController tripHelper,
-                               TripHistoryController tripHistory) {
+                               TripHistoryController tripHistory,
+                               TripHelperService tripHelperService,
+                               DialogState dialogState,
+                               UserDAO userDAO) {
         this.plannedTrips = plannedTrips;
         this.tripHelper = tripHelper;
         this.tripHistory = tripHistory;
-        this.dialogState = new DialogState();
+        this.tripHelperService = tripHelperService;
+        this.dialogState = dialogState;
+        this.userDAO = userDAO;
     }
 
     public Mono<String> handleCommand(Long chatId, String messageText) {
         // Если пользователь находится в диалоге, обрабатываем его ввод
         if (dialogState.isInDialog(chatId)) {
-            return handleDialogInput(chatId, messageText);
+            DialogState.CommandState state = dialogState.getState(chatId);
+            // Если текущий шаг - WAITING_LOCATION, то это не диалог, а фоновый процесс
+            if (state != null && state.currentStep == DialogState.Step.WAITING_LOCATION) {
+                dialogState.endDialog(chatId);
+            } else {
+                return handleDialogInput(chatId, messageText);
+            }
         }
 
         // Обработка команд
@@ -47,11 +65,6 @@ public class TelegramBotController {
                 yield Mono.just(dialogState.getPrompt(chatId));
             }
 
-            case "/setstartpoint", "/setstartingpoint" -> {
-                dialogState.startDialog(chatId, DialogState.Command.SET_START_POINT);
-                yield Mono.just(dialogState.getPrompt(chatId));
-            }
-
             case "/addroute" -> {
                 dialogState.startDialog(chatId, DialogState.Command.ADD_ROUTE);
                 yield Mono.just(dialogState.getPrompt(chatId));
@@ -62,13 +75,9 @@ public class TelegramBotController {
                 yield Mono.just(dialogState.getPrompt(chatId));
             }
 
-            case "/cancelplanning" -> plannedTrips.handleCancelPlanning(chatId);
-
             case "/deleteplanned" -> {
-                if (parts.length < 2) {
-                    yield Mono.just("Формат: /deleteplanned <tripId>");
-                }
-                yield plannedTrips.handleDeletePlanned(chatId, parts[1]);
+                dialogState.startDialog(chatId, DialogState.Command.DELETE_PLANNED);
+                yield Mono.just(dialogState.getPrompt(chatId));
             }
 
             case "/showongoingtrip" -> tripHelper.handleShowOngoingTrip(chatId);
@@ -87,14 +96,30 @@ public class TelegramBotController {
 
             case "/finisheddetails" -> {
                 if (parts.length < 2) {
-                    yield Mono.just("Формат: /finisheddetails <tripId>");
+                    yield tripHistory.handleFinishedDetails(chatId, null);
                 }
-                yield tripHistory.handleFinishedDetails(parts[1]);
+                yield tripHistory.handleFinishedDetails(chatId, parts[1]);
             }
 
             case "/ratefinished" -> {
                 dialogState.startDialog(chatId, DialogState.Command.RATE_FINISHED);
                 yield Mono.just(dialogState.getPrompt(chatId));
+            }
+
+            case "/setongoing" -> {
+                dialogState.startDialog(chatId, DialogState.Command.SET_ONGOING);
+                yield Mono.just(dialogState.getPrompt(chatId));
+            }
+
+            case "/startontrip" -> {
+                dialogState.startDialog(chatId, DialogState.Command.SET_ONGOING);
+                yield plannedTrips.handleFinishPlanning(chatId)
+                    .flatMap(response -> {
+                        if (response.contains("нет запланированных поездок")) {
+                            return Mono.just("У вас нет запланированных поездок. Сначала создайте поездку с помощью /plantrip");
+                        }
+                        return Mono.just("Выберите поездку из списка выше, чтобы начать отслеживание геопозиции. После выбора поездки отправьте свою геопозицию.");
+                    });
             }
 
             case "/start" -> plannedTrips.handleStartCommand(chatId);
@@ -105,18 +130,17 @@ public class TelegramBotController {
                             "/showplanned — показать запланированные поездки\n" +
                             "/plantrip — создать поездку\n" +
                             "/addpoint — добавить точку\n" +
-                            "/setstartpoint или /setstartingpoint — установить начальную точку\n" +
                             "/addroute — добавить маршрут\n" +
                             "/finishplanning — завершить планирование\n" +
-                            "/cancelplanning — отменить планирование\n" +
-                            "/deleteplanned <tripId> — удалить поездку\n" +
+                            "/deleteplanned — удалить поездку\n" +
                             "\n🗺 Помощник в поездке:\n" +
                             "/showongoingtrip — текущая поездка\n" +
                             "/addnote — добавить заметку к точке\n" +
                             "/markpoint — отметить точку посещённой\n" +
+                            "/setongoing — начать отслеживание геопозиции\n" +
                             "\n📖 История:\n" +
                             "/triphistory — завершённые поездки\n" +
-                            "/finisheddetails <tripId> — подробности поездки\n" +
+                            "/finisheddetails — подробности поездки\n" +
                             "/ratefinished — оценить поездку"
             );
 
@@ -124,43 +148,57 @@ public class TelegramBotController {
         };
     }
 
-    private Mono<String> handleDialogInput(Long chatId, String input) {
+    public Mono<String> handleDialogInput(Long chatId, String input) {
         DialogState.CommandState state = dialogState.getState(chatId);
         if (state == null) {
-            return Mono.just("Ошибка: диалог не найден");
+            return Mono.just("Нет активного диалога. Используйте команды для начала работы.");
         }
 
-        // Проверяем валидность ввода
-        if (!dialogState.validateInput(chatId, input)) {
-            return Mono.just(dialogState.getErrorMessage(chatId));
+        // Validate input
+        String validationError = dialogState.validateInput(chatId, input);
+        if (validationError != null) {
+            return Mono.just(validationError);
         }
 
-        // Сохраняем введенные данные
-        switch (state.currentStep) {
-            case WAITING_NAME -> dialogState.setData(chatId, "name", input);
-            case WAITING_START_DATE -> dialogState.setData(chatId, "startDate", input);
-            case WAITING_END_DATE -> dialogState.setData(chatId, "endDate", input);
-            case WAITING_POINT_NAME -> dialogState.setData(chatId, "pointName", input);
-            case WAITING_LATITUDE -> dialogState.setData(chatId, "latitude", input);
-            case WAITING_LONGITUDE -> dialogState.setData(chatId, "longitude", input);
-            case WAITING_TRIP_NAME -> dialogState.setData(chatId, "tripName", input);
-            case WAITING_POINT_ID -> dialogState.setData(chatId, "pointId", input);
-            case WAITING_ROUTE_DATE -> dialogState.setData(chatId, "routeDate", input);
-            case WAITING_NOTE -> dialogState.setData(chatId, "note", input);
-            case WAITING_RATING -> dialogState.setData(chatId, "rating", input);
-            case WAITING_POINT_COORDINATES -> dialogState.setData(chatId, "coordinates", input);
+        // Save input data
+        if (state.currentStep == DialogState.Step.WAITING_RATING) {
+            try {
+                int rating = Integer.parseInt(input);
+                if (rating < 1 || rating > 5) {
+                    return Mono.just("Ошибка: оценка должна быть от 1 до 5");
+                }
+                dialogState.setData(chatId, "rating", rating);
+            } catch (NumberFormatException e) {
+                return Mono.just("Ошибка: введите число от 1 до 5");
+            }
+        } else if (state.currentStep == DialogState.Step.WAITING_TRIP_NAME) {
+            dialogState.setData(chatId, "tripName", input);
+        } else {
+            String key;
+            switch (state.currentStep) {
+                case WAITING_NAME -> key = "name";
+                case WAITING_START_DATE -> key = "startDate";
+                case WAITING_END_DATE -> key = "endDate";
+                case WAITING_LATITUDE -> key = "latitude";
+                case WAITING_LONGITUDE -> key = "longitude";
+                case WAITING_POINT_NAME -> key = "pointName";
+                case WAITING_ROUTE_DATE -> key = "routeDate";
+                default -> key = state.currentStep.toString().toLowerCase();
+            }
+            dialogState.setData(chatId, key, input);
         }
 
-        // Переходим к следующему шагу
-        dialogState.nextStep(chatId);
+        // Get next step
+        DialogState.Step nextStep = dialogState.getNextStep(state.command, state.currentStep);
 
-        // Получаем следующий шаг
-        DialogState.CommandState nextState = dialogState.getState(chatId);
-        if (nextState == null || nextState.currentStep == null) {
+        if (nextStep == null) {
             // Если следующего шага нет, выполняем команду и завершаем диалог
             return executeCommand(chatId, state.command)
                     .doFinally(signalType -> dialogState.endDialog(chatId));
         }
+
+        // Обновляем текущий шаг
+        state.currentStep = nextStep;
 
         // Иначе возвращаем следующий вопрос
         return Mono.just(dialogState.getPrompt(chatId));
@@ -181,40 +219,102 @@ public class TelegramBotController {
                 double longitude = Double.parseDouble((String) dialogState.getData(chatId, "longitude"));
                 yield plannedTrips.handleAddPoint(chatId, tripName, pointName, latitude, longitude);
             }
-            case SET_START_POINT -> {
-                String tripName = (String) dialogState.getData(chatId, "tripName");
-                String coordinates = (String) dialogState.getData(chatId, "coordinates");
-                String[] parts = coordinates.split(",");
-                double latitude = Double.parseDouble(parts[0].trim());
-                double longitude = Double.parseDouble(parts[1].trim());
-                yield plannedTrips.handleSetStartPoint(tripName, latitude, longitude)
-                        .map(trip -> "✅ Стартовая точка успешно добавлена!");
-            }
             case ADD_ROUTE -> {
                 String tripName = (String) dialogState.getData(chatId, "tripName");
-                String pointId = (String) dialogState.getData(chatId, "pointId");
+                String pointName = (String) dialogState.getData(chatId, "pointName");
                 String routeDate = (String) dialogState.getData(chatId, "routeDate");
-                yield plannedTrips.handleAddRoute(tripName, pointId, routeDate);
+                yield plannedTrips.handleAddRoute(chatId, tripName, pointName, routeDate);
             }
             case FINISH_PLANNING -> {
                 String tripName = (String) dialogState.getData(chatId, "tripName");
-                yield plannedTrips.handleFinishPlanning(chatId)
-                        .then(Mono.just("Рад что Вы отдохнули! Если желаете напишите заметку о своем путешествии с помощью /addnote"));
+                if (tripName == null) {
+                    yield plannedTrips.handleFinishPlanning(chatId);
+                } else {
+                    yield plannedTrips.handleFinishPlanningWithName(chatId, tripName)
+                            .then(Mono.just("Рад что Вы отдохнули! Если желаете напишите заметку о своем путешествии с помощью /addnote"));
+                }
             }
             case ADD_NOTE -> {
-                String pointId = (String) dialogState.getData(chatId, "pointId");
+                String tripName = (String) dialogState.getData(chatId, "tripName");
                 String note = (String) dialogState.getData(chatId, "note");
-                yield tripHelper.handleAddNote(pointId, note);
+                yield tripHelper.handleAddNote(chatId, tripName, note);
             }
             case MARK_POINT -> {
-                String pointId = (String) dialogState.getData(chatId, "pointId");
-                yield tripHelper.handleMarkPoint(pointId);
+                String pointName = (String) dialogState.getData(chatId, "pointName");
+                String tripName = (String) dialogState.getData(chatId, "tripName");
+                if (tripName == null) {
+                    dialogState.setData(chatId, "tripName", pointName);
+                    yield Mono.just("Введите название поездки:");
+                } else {
+                    dialogState.setData(chatId, "pointName", pointName);
+                    yield tripHelper.markPointVisited(tripName, pointName)
+                            .map(point -> "Точка '" + point.getName() + "' отмечена как посещенная")
+                            .onErrorResume(e -> Mono.just("Ошибка: " + e.getMessage()));
+                }
             }
             case RATE_FINISHED -> {
-                String tripName = (String) dialogState.getData(chatId, "tripName");
-                int rating = Integer.parseInt((String) dialogState.getData(chatId, "rating"));
-                yield tripHistory.handleRateFinished(tripName, rating);
+                DialogState.CommandState commandState = dialogState.getState(chatId);
+                if (commandState == null || commandState.currentStep == null) {
+                    // Начало диалога - проверяем наличие завершённых поездок
+                    yield tripHistory.handleTripHistory(chatId)
+                            .flatMap(response -> {
+                                if (response.contains("У вас пока нет завершённых поездок")) {
+                                    return Mono.just(response);
+                                }
+                                return Mono.just("Введите название поездки из списка завершённых:");
+                            });
+                } else if (commandState.currentStep == DialogState.Step.WAITING_TRIP_NAME) {
+                    String tripName = (String) dialogState.getData(chatId, "tripName");
+                    if (tripName == null || tripName.isEmpty()) {
+                        yield Mono.just("Ошибка: название поездки не может быть пустым");
+                    }
+                    dialogState.nextStep(chatId);
+                    yield Mono.just("Введите оценку (от 1 до 5):");
+                } else if (commandState.currentStep == DialogState.Step.WAITING_RATING) {
+                    String tripName = (String) dialogState.getData(chatId, "tripName");
+                    Object ratingObj = dialogState.getData(chatId, "rating");
+                    
+                    if (ratingObj == null) {
+                        yield Mono.just("Ошибка: оценка не была введена");
+                    }
+                    
+                    int rating = (Integer) ratingObj;
+                    yield tripHistory.handleRateFinished(chatId, tripName, rating)
+                            .doFinally(signalType -> dialogState.endDialog(chatId));
+                }
+                yield Mono.just("Неизвестная ошибка в процессе оценки поездки");
             }
+            case DELETE_PLANNED -> {
+                String tripName = (String) dialogState.getData(chatId, "tripName");
+                yield plannedTrips.handleDeletePlanned(chatId, tripName);
+            }
+            case SET_ONGOING -> {
+                String tripName = (String) dialogState.getData(chatId, "tripName");
+                yield plannedTrips.handleFinishPlanningWithName(chatId, tripName)
+                    .flatMap(trip -> {
+                        if (trip == null) {
+                            return Mono.just("Такой поездки нет! Если хотите создать поездку воспользуйтесь: /plantrip или просмотрите свои поездки с помощью: /showplanned");
+                        }
+                        return userDAO.setOngoingTrip(chatId, trip.getId())
+                            .then(Mono.just("Поездка \"" + trip.getName() + "\" установлена как активная. Теперь вы можете делиться своей геопозицией, нажав на кнопку 'Отправить геопозицию'."));
+                    })
+                    .switchIfEmpty(Mono.just("Такой поездки нет! Если хотите создать поездку воспользуйтесь: /plantrip или просмотрите свои поездки с помощью: /showplanned"))
+                    .doFinally(signalType -> dialogState.endDialog(chatId));
+            }
+            default -> Mono.just("Неизвестная команда");
         };
+    }
+
+    public Mono<String> handleLocation(Long chatId, double latitude, double longitude) {
+        return tripHelper.handleLocationUpdate(chatId, latitude, longitude)
+            .then(Mono.just("Геопозиция принята. Продолжайте делиться геопозицией для отслеживания точек маршрута."))
+            .onErrorResume(e -> {
+                logger.error("Error handling location update for chat {}: {}", chatId, e.getMessage());
+                return Mono.just("Ошибка при обработке геопозиции. Пожалуйста, попробуйте снова.");
+            })
+            .doFinally(signalType -> {
+                // Завершаем диалог после получения геопозиции
+                dialogState.endDialog(chatId);
+            });
     }
 }

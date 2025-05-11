@@ -25,4 +25,10 @@ public interface TripDAO {
     Mono<Trip> getTrip(String tripId);
 
     Flux<Trip> getAllTrips();
+
+    Mono<Trip> addNoteToTrip(String tripId, String note);
+
+    Mono<Trip> updateTripStatus(String tripId, String status);
+
+    Mono<Point> markPointVisited(String tripId, String pointId);
 }

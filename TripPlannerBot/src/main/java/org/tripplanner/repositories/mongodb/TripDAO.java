@@ -21,4 +21,5 @@ public interface TripDAO {
     Mono<Trip> setTripRating(String tripId, int rating);
     Mono<Trip> getTrip(String tripId);
     Flux<Trip> getAllTrips();
+    Mono<Trip> addNoteToTrip(String tripId, String note);
 } 

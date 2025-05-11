@@ -1,6 +1,7 @@
 package org.tripplanner.domain;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 public class Trip {
@@ -13,6 +14,8 @@ public class Trip {
     private Point startPoint;
     private List<Point> points;
     private List<Route> routes;
+    private String status;
+    private List<String> notes;
 
     public Trip() {
     }
@@ -26,6 +29,7 @@ public class Trip {
         this.startPoint = startPoint;
         this.points = points;
         this.routes = routes;
+        this.notes = new ArrayList<>();
     }
 
     public String getId() {
@@ -90,5 +94,21 @@ public class Trip {
 
     public void setRoutes(List<Route> routes) {
         this.routes = routes;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public List<String> getNotes() {
+        return notes;
+    }
+
+    public void setNotes(List<String> notes) {
+        this.notes = notes;
     }
 }

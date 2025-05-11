@@ -124,19 +124,31 @@ public class UserDAOImpl implements UserDAO {
         return mongoTemplate.findOne(query, UserDBO.class)
                 .flatMap(user -> {
                     ObjectId tripId = user.getTripInPlanning();
-                    if (tripId == null) return Mono.empty();
+                    if (tripId == null) {
+                        return Mono.error(new RuntimeException("No trip in planning"));
+                    }
 
-                    Update update = new Update()
-                            .addToSet("plannedTrips", tripId)
-                            .unset("tripInPlanning");
+                    // Сначала получаем поездку, чтобы сохранить все данные
+                    return tripDAO.getTrip(tripId.toString())
+                            .flatMap(trip -> {
+                                // Обновляем статус поездки
+                                return tripDAO.updateTripStatus(tripId.toString(), "FINISHED")
+                                        .then(Mono.just(trip));
+                            })
+                            .flatMap(trip -> {
+                                // Обновляем пользователя: добавляем в историю и удаляем из планируемых
+                                Update update = new Update()
+                                        .addToSet("tripHistory", tripId)
+                                        .pull("plannedTrips", tripId)
+                                        .unset("tripInPlanning");
 
-                    return mongoTemplate.findAndModify(query, update, UserDBO.class)
-                            .flatMap(updatedUser -> tripDAO.getTrip(tripId.toHexString())
-                                    .onErrorResume(e -> {
-                                        logger.error("Error getting trip after finishing planning for user {}: {}", 
-                                            chatId, e.getMessage());
-                                        return Mono.empty();
-                                    }));
+                                return mongoTemplate.findAndModify(query, update, UserDBO.class)
+                                        .thenReturn(trip);
+                            })
+                            .onErrorResume(e -> {
+                                logger.error("Error finishing planning for user {}: {}", chatId, e.getMessage());
+                                return Mono.error(e);
+                            });
                 })
                 .onErrorResume(e -> {
                     logger.error("Error in finishPlanning for chatId {}: {}", chatId, e.getMessage());
@@ -242,6 +254,56 @@ public class UserDAOImpl implements UserDAO {
                 .then()
                 .onErrorResume(e -> {
                     logger.error("Error updating location for user {}: {}", chatId, e.getMessage());
+                    return Mono.error(e);
+                });
+    }
+
+    @Override
+    public Mono<User> getUserByChatId(Long chatId) {
+        Query query = Query.query(Criteria.where("chatId").is(chatId));
+        return mongoTemplate.findOne(query, UserDBO.class)
+                .map(userMapper::fromDbo)
+                .onErrorResume(e -> {
+                    logger.error("Error in getUserByChatId for chatId {}: {}", chatId, e.getMessage());
+                    return Mono.error(e);
+                });
+    }
+
+    @Override
+    public Mono<Void> addToTripHistory(Long chatId, String tripId) {
+        Query query = Query.query(Criteria.where("chatId").is(chatId));
+        Update update = new Update().addToSet("tripHistory", new ObjectId(tripId));
+        return mongoTemplate.updateFirst(query, update, UserDBO.class)
+                .then()
+                .onErrorResume(e -> {
+                    logger.error("Error adding trip {} to history for user {}: {}", tripId, chatId, e.getMessage());
+                    return Mono.error(e);
+                });
+    }
+
+    @Override
+    public Mono<Void> removeFromPlannedTrips(Long chatId, String tripId) {
+        Query query = Query.query(Criteria.where("chatId").is(chatId));
+        Update update = new Update().pull("plannedTrips", new ObjectId(tripId));
+        return mongoTemplate.updateFirst(query, update, UserDBO.class)
+                .then()
+                .onErrorResume(e -> {
+                    logger.error("Error removing trip {} from planned trips for user {}: {}", tripId, chatId, e.getMessage());
+                    return Mono.error(e);
+                });
+    }
+
+    @Override
+    public Mono<Void> setOngoingTrip(Long chatId, String tripId) {
+        Query query = Query.query(Criteria.where("chatId").is(chatId));
+        Update update = new Update()
+                .set("ongoingTrip", new ObjectId(tripId))
+                .pull("plannedTrips", new ObjectId(tripId))
+                .addToSet("currentTrips", new ObjectId(tripId));
+        return mongoTemplate.updateFirst(query, update, UserDBO.class)
+                .then()
+                .onErrorResume(e -> {
+                    logger.error("Error setting ongoing trip {} for user {}: {}", tripId, chatId, e.getMessage());
                     return Mono.error(e);
                 });
     }

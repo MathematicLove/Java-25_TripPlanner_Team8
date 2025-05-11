@@ -23,23 +23,35 @@ public class TripMapper {
 
     public TripDBO toDbo(Trip trip) {
         TripDBO dbo = new TripDBO();
-        dbo.setId(new ObjectId());
+        if (trip.getId() != null && !trip.getId().isEmpty()) {
+            dbo.setId(new ObjectId(trip.getId()));
+        }
         dbo.setName(trip.getName());
         dbo.setStartDate(trip.getStartDate());
         dbo.setEndDate(trip.getEndDate());
         dbo.setRating(trip.getRating());
+        dbo.setStatus(trip.getStatus());
+        dbo.setNotes(trip.getNotes() != null ? trip.getNotes() : Collections.emptyList());
 
         // Если startPoint не null, сохраняем его ID
-        dbo.setStartPoint(trip.getStartPoint() != null ? new ObjectId() : null);
+        if (trip.getStartPoint() != null && trip.getStartPoint().getId() != null) {
+            dbo.setStartPoint(new ObjectId(trip.getStartPoint().getId()));
+        }
 
         // Преобразование points → List<ObjectId>
         dbo.setPoints(trip.getPoints() != null ?
-                trip.getPoints().stream().map(p -> new ObjectId()).collect(Collectors.toList()) :
+                trip.getPoints().stream()
+                    .filter(p -> p.getId() != null)
+                    .map(p -> new ObjectId(p.getId()))
+                    .collect(Collectors.toList()) :
                 Collections.emptyList());
 
         // Преобразование routes → List<ObjectId>
         dbo.setRoutes(trip.getRoutes() != null ?
-                trip.getRoutes().stream().map(r -> new ObjectId()).collect(Collectors.toList()) :
+                trip.getRoutes().stream()
+                    .filter(r -> r != null)
+                    .map(r -> new ObjectId())
+                    .collect(Collectors.toList()) :
                 Collections.emptyList());
 
         return dbo;
@@ -57,13 +69,44 @@ public class TripMapper {
         trip.setStartDate(dbo.getStartDate());
         trip.setEndDate(dbo.getEndDate());
         trip.setRating(dbo.getRating());
-        trip.setStartPoint(null);
-        trip.setPoints(Collections.emptyList());
-        trip.setRoutes(Collections.emptyList());
+        trip.setStatus(dbo.getStatus());
+        trip.setNotes(dbo.getNotes() != null ? dbo.getNotes() : Collections.emptyList());
+
+        // Маппинг startPoint
+        if (dbo.getStartPoint() != null) {
+            Point point = new Point();
+            point.setId(dbo.getStartPoint().toHexString());
+            trip.setStartPoint(point);
+        }
+
+        // Маппинг points
+        trip.setPoints(dbo.getPoints() != null ? 
+                dbo.getPoints().stream()
+                        .map(pointId -> {
+                            Point point = new Point();
+                            point.setId(pointId.toHexString());
+                            return point;
+                        })
+                        .collect(Collectors.toList()) : 
+                Collections.emptyList());
+
+        // Маппинг routes
+        trip.setRoutes(dbo.getRoutes() != null ?
+                dbo.getRoutes().stream()
+                        .map(routeId -> {
+                            Route route = new Route();
+                            return route;
+                        })
+                        .collect(Collectors.toList()) :
+                Collections.emptyList());
 
         System.out.println("Mapped trip from DBO: " + trip.getName() + " with ID: " + trip.getId() + 
                 ", dates: " + trip.getStartDate() + " - " + trip.getEndDate() + 
-                ", rating: " + trip.getRating());
+                ", rating: " + trip.getRating() +
+                ", points: " + trip.getPoints().size() +
+                ", routes: " + trip.getRoutes().size() +
+                ", status: " + trip.getStatus() +
+                ", notes: " + trip.getNotes().size());
         return trip;
     }
 

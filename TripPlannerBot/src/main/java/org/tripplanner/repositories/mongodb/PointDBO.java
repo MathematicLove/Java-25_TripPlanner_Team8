@@ -17,6 +17,7 @@ public class PointDBO {
     private double longitude;
     private boolean visited;
     private List<String> notes;
+    private ObjectId tripId;
 
     // Конструкторы
     public PointDBO() {}
@@ -76,5 +77,13 @@ public class PointDBO {
 
     public void setNotes(List<String> notes) {
         this.notes = notes;
+    }
+
+    public ObjectId getTripId() {
+        return tripId;
+    }
+
+    public void setTripId(ObjectId tripId) {
+        this.tripId = tripId;
     }
 }

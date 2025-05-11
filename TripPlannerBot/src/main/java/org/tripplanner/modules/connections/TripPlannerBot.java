@@ -4,13 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.Location;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.tripplanner.modules.dialog.TelegramBotController;
 
 public class TripPlannerBot extends TelegramLongPollingBot {
-
     private static final Logger logger = LoggerFactory.getLogger(TripPlannerBot.class);
+
     private final TelegramBotController controller;
     private final String botToken;
     private final String botUsername;
@@ -22,42 +23,67 @@ public class TripPlannerBot extends TelegramLongPollingBot {
     }
 
     @Override
-    public String getBotToken() {
-        return botToken;
-    }
-
-    @Override
     public String getBotUsername() {
         return botUsername;
     }
 
     @Override
+    public String getBotToken() {
+        return botToken;
+    }
+
+    @Override
     public void onUpdateReceived(Update update) {
-        if (update.hasMessage() && update.getMessage().hasText()) {
+        if (update.hasMessage()) {
             var message = update.getMessage();
             Long chatId = message.getChatId();
-            String text = message.getText();
 
-            logger.debug("Received message from chat {}: {}", chatId, text);
+            if (message.hasText()) {
+                String text = message.getText();
+                logger.debug("Received message from chat {}: {}", chatId, text);
 
-            controller.handleCommand(chatId, text)
-                    .doOnError(error -> {
-                        logger.error("Error handling command for chat {}: {}", chatId, error.getMessage());
-                        sendErrorMessage(chatId, "Произошла ошибка при обработке команды. Пожалуйста, попробуйте позже.");
-                    })
-                    .subscribe(response -> {
-                        SendMessage reply = new SendMessage();
-                        reply.setChatId(chatId.toString());
-                        reply.setText(response);
+                controller.handleCommand(chatId, text)
+                        .doOnError(error -> {
+                            logger.error("Error handling command for chat {}: {}", chatId, error.getMessage());
+                            sendErrorMessage(chatId, "Произошла ошибка при обработке команды. Пожалуйста, попробуйте позже.");
+                        })
+                        .subscribe(response -> {
+                            SendMessage reply = new SendMessage();
+                            reply.setChatId(chatId.toString());
+                            reply.setText(response);
 
-                        try {
-                            execute(reply);
-                            logger.debug("Sent response to chat {}: {}", chatId, response);
-                        } catch (TelegramApiException e) {
-                            logger.error("Error sending message to chat {}: {}", chatId, e.getMessage());
-                            sendErrorMessage(chatId, "Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте позже.");
-                        }
-                    });
+                            try {
+                                execute(reply);
+                                logger.debug("Sent response to chat {}: {}", chatId, response);
+                            } catch (TelegramApiException e) {
+                                logger.error("Error sending message to chat {}: {}", chatId, e.getMessage());
+                                sendErrorMessage(chatId, "Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте позже.");
+                            }
+                        });
+            } else if (message.hasLocation()) {
+                Location location = message.getLocation();
+                logger.debug("Received location from chat {}: lat={}, lon={}", 
+                    chatId, location.getLatitude(), location.getLongitude());
+
+                controller.handleLocation(chatId, location.getLatitude(), location.getLongitude())
+                        .doOnError(error -> {
+                            logger.error("Error handling location for chat {}: {}", chatId, error.getMessage());
+                            sendErrorMessage(chatId, "Произошла ошибка при обработке геопозиции. Пожалуйста, попробуйте позже.");
+                        })
+                        .subscribe(response -> {
+                            SendMessage reply = new SendMessage();
+                            reply.setChatId(chatId.toString());
+                            reply.setText(response);
+
+                            try {
+                                execute(reply);
+                                logger.debug("Sent location response to chat {}: {}", chatId, response);
+                            } catch (TelegramApiException e) {
+                                logger.error("Error sending location response to chat {}: {}", chatId, e.getMessage());
+                                sendErrorMessage(chatId, "Произошла ошибка при отправке сообщения. Пожалуйста, попробуйте позже.");
+                            }
+                        });
+            }
         }
     }
 

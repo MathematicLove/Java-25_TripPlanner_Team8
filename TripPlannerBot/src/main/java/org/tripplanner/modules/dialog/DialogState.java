@@ -7,16 +7,20 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class DialogState {
     public enum Command {
         PLAN_TRIP,
         ADD_POINT,
-        SET_START_POINT,
         ADD_ROUTE,
         FINISH_PLANNING,
         ADD_NOTE,
         MARK_POINT,
-        RATE_FINISHED
+        RATE_FINISHED,
+        DELETE_PLANNED,
+        SET_ONGOING
     }
 
     public enum Step {
@@ -27,11 +31,10 @@ public class DialogState {
         WAITING_LATITUDE,
         WAITING_LONGITUDE,
         WAITING_TRIP_NAME,
-        WAITING_POINT_ID,
         WAITING_ROUTE_DATE,
         WAITING_NOTE,
         WAITING_RATING,
-        WAITING_POINT_COORDINATES
+        WAITING_LOCATION
     }
 
     public static class CommandState {
@@ -49,12 +52,13 @@ public class DialogState {
             return switch (command) {
                 case PLAN_TRIP -> Step.WAITING_NAME;
                 case ADD_POINT -> Step.WAITING_TRIP_NAME;
-                case SET_START_POINT -> Step.WAITING_TRIP_NAME;
                 case ADD_ROUTE -> Step.WAITING_TRIP_NAME;
                 case FINISH_PLANNING -> Step.WAITING_TRIP_NAME;
-                case ADD_NOTE -> Step.WAITING_POINT_ID;
-                case MARK_POINT -> Step.WAITING_POINT_ID;
+                case ADD_NOTE -> Step.WAITING_TRIP_NAME;
+                case MARK_POINT -> Step.WAITING_TRIP_NAME;
                 case RATE_FINISHED -> Step.WAITING_TRIP_NAME;
+                case DELETE_PLANNED -> Step.WAITING_TRIP_NAME;
+                case SET_ONGOING -> Step.WAITING_TRIP_NAME;
             };
         }
     }
@@ -99,7 +103,7 @@ public class DialogState {
         }
     }
 
-    private Step getNextStep(Command command, Step currentStep) {
+    public Step getNextStep(Command command, Step currentStep) {
         return switch (command) {
             case PLAN_TRIP -> switch (currentStep) {
                 case WAITING_NAME -> Step.WAITING_START_DATE;
@@ -114,14 +118,9 @@ public class DialogState {
                 case WAITING_LONGITUDE -> null;
                 default -> null;
             };
-            case SET_START_POINT -> switch (currentStep) {
-                case WAITING_TRIP_NAME -> Step.WAITING_POINT_COORDINATES;
-                case WAITING_POINT_COORDINATES -> null;
-                default -> null;
-            };
             case ADD_ROUTE -> switch (currentStep) {
-                case WAITING_TRIP_NAME -> Step.WAITING_POINT_ID;
-                case WAITING_POINT_ID -> Step.WAITING_ROUTE_DATE;
+                case WAITING_TRIP_NAME -> Step.WAITING_POINT_NAME;
+                case WAITING_POINT_NAME -> Step.WAITING_ROUTE_DATE;
                 case WAITING_ROUTE_DATE -> null;
                 default -> null;
             };
@@ -130,17 +129,27 @@ public class DialogState {
                 default -> null;
             };
             case ADD_NOTE -> switch (currentStep) {
-                case WAITING_POINT_ID -> Step.WAITING_NOTE;
+                case WAITING_TRIP_NAME -> Step.WAITING_NOTE;
                 case WAITING_NOTE -> null;
                 default -> null;
             };
             case MARK_POINT -> switch (currentStep) {
-                case WAITING_POINT_ID -> null;
+                case WAITING_TRIP_NAME -> Step.WAITING_POINT_NAME;
+                case WAITING_POINT_NAME -> null;
                 default -> null;
             };
             case RATE_FINISHED -> switch (currentStep) {
                 case WAITING_TRIP_NAME -> Step.WAITING_RATING;
                 case WAITING_RATING -> null;
+                default -> null;
+            };
+            case DELETE_PLANNED -> switch (currentStep) {
+                case WAITING_TRIP_NAME -> null;
+                default -> null;
+            };
+            case SET_ONGOING -> switch (currentStep) {
+                case WAITING_TRIP_NAME -> Step.WAITING_LOCATION;
+                case WAITING_LOCATION -> null;
                 default -> null;
             };
         };
@@ -158,28 +167,95 @@ public class DialogState {
             case WAITING_POINT_NAME -> "Введите название точки (только латиница):";
             case WAITING_LATITUDE -> "Введите широту (-90 до 90):";
             case WAITING_LONGITUDE -> "Введите долготу (-180 до 180):";
-            case WAITING_POINT_ID -> "Введите ID точки:";
             case WAITING_ROUTE_DATE -> "Введите дату маршрута (формат: YYYY-MM-DD):";
             case WAITING_NOTE -> "Введите заметку:";
             case WAITING_RATING -> "Введите оценку (от 1 до 5):";
-            case WAITING_POINT_COORDINATES -> "Введите координаты точки в формате 'широта, долгота' (например: 37.9601, 58.3261):";
+            case WAITING_LOCATION -> "Отправьте свою геопозицию:";
         };
     }
 
-    public boolean validateInput(Long chatId, String input) {
+    public String validateInput(Long chatId, String input) {
         CommandState state = states.get(chatId);
-        if (state == null) return false;
+        if (state == null) return null;
 
         return switch (state.currentStep) {
-            case WAITING_NAME, WAITING_POINT_NAME, WAITING_TRIP_NAME -> validateLatinOnly(input);
-            case WAITING_START_DATE, WAITING_END_DATE, WAITING_ROUTE_DATE -> validateDate(input);
+            case WAITING_NAME -> validateName(input);
+            case WAITING_START_DATE -> validateDate(input);
+            case WAITING_END_DATE -> validateDate(input);
+            case WAITING_TRIP_NAME -> !input.trim().isEmpty() ? null : "Название поездки не может быть пустым";
+            case WAITING_POINT_NAME -> validateName(input);
             case WAITING_LATITUDE -> validateLatitude(input);
             case WAITING_LONGITUDE -> validateLongitude(input);
-            case WAITING_POINT_ID -> !input.trim().isEmpty();
-            case WAITING_NOTE -> !input.trim().isEmpty();
-            case WAITING_RATING -> validateRating(input);
-            case WAITING_POINT_COORDINATES -> validateCoordinates(input);
+            case WAITING_NOTE -> !input.trim().isEmpty() ? null : "Заметка не может быть пустой";
+            case WAITING_RATING -> {
+                try {
+                    int rating = Integer.parseInt(input);
+                    if (rating < 1 || rating > 5) {
+                        yield "Ошибка: оценка должна быть от 1 до 5";
+                    }
+                    yield null;
+                } catch (NumberFormatException e) {
+                    yield "Ошибка: введите число от 1 до 5";
+                }
+            }
+            case WAITING_LOCATION -> null;
+            case WAITING_ROUTE_DATE -> validateDate(input);
         };
+    }
+
+    private String validateName(String input) {
+        if (input == null || input.trim().isEmpty()) {
+            return "Название не может быть пустым";
+        }
+        if (!input.matches("[a-zA-Z0-9\\s]+")) {
+            return "Название должно содержать только латинские буквы, цифры и пробелы";
+        }
+        return null;
+    }
+
+    private String validateDate(String input) {
+        try {
+            LocalDate.parse(input, DATE_FORMATTER);
+            return null;
+        } catch (DateTimeParseException e) {
+            return "Неверный формат даты. Используйте формат YYYY-MM-DD";
+        }
+    }
+
+    private String validateLatitude(String input) {
+        try {
+            double lat = Double.parseDouble(input);
+            if (lat < -90 || lat > 90) {
+                return "Широта должна быть от -90 до 90 градусов";
+            }
+            return null;
+        } catch (NumberFormatException e) {
+            return "Введите корректное число";
+        }
+    }
+
+    private String validateLongitude(String input) {
+        try {
+            double lon = Double.parseDouble(input);
+            if (lon < -180 || lon > 180) {
+                return "Долгота должна быть от -180 до 180 градусов";
+            }
+            return null;
+        } catch (NumberFormatException e) {
+            return "Введите корректное число";
+        }
+    }
+
+    private String validateCoordinates(String input) {
+        String[] parts = input.split(",");
+        if (parts.length != 2) {
+            return "Введите координаты в формате 'широта, долгота'";
+        }
+        String latError = validateLatitude(parts[0].trim());
+        if (latError != null) {
+            return latError;
+        }
+        return validateLongitude(parts[1].trim());
     }
 
     public String getErrorMessage(Long chatId) {
@@ -191,64 +267,9 @@ public class DialogState {
             case WAITING_START_DATE, WAITING_END_DATE, WAITING_ROUTE_DATE -> "Упс! Указанное время прошло! Оно летит быстро :(";
             case WAITING_LATITUDE -> "Широта должна быть числом от -90 до 90";
             case WAITING_LONGITUDE -> "Долгота должна быть числом от -180 до 180";
-            case WAITING_POINT_ID -> "ID точки не может быть пустым";
             case WAITING_NOTE -> "Заметка не может быть пустой";
             case WAITING_RATING -> "Оценка должна быть числом от 1 до 5";
-            case WAITING_POINT_COORDINATES -> "Неверный формат координат. Используйте формат 'широта, долгота' (например: 37.9601, 58.3261)";
+            case WAITING_LOCATION -> "Пожалуйста, отправьте геопозицию, используя кнопку 'Отправить геопозицию'";
         };
-    }
-
-    private boolean validateLatinOnly(String input) {
-        return LATIN_PATTERN.matcher(input).matches();
-    }
-
-    private boolean validateDate(String input) {
-        try {
-            LocalDate date = LocalDate.parse(input, DATE_FORMATTER);
-            return !date.isBefore(LocalDate.now());
-        } catch (DateTimeParseException e) {
-            return false;
-        }
-    }
-
-    private boolean validateLatitude(String input) {
-        try {
-            double lat = Double.parseDouble(input);
-            return lat >= -90 && lat <= 90;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private boolean validateLongitude(String input) {
-        try {
-            double lon = Double.parseDouble(input);
-            return lon >= -180 && lon <= 180;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private boolean validateRating(String input) {
-        try {
-            int rating = Integer.parseInt(input);
-            return rating >= 1 && rating <= 5;
-        } catch (NumberFormatException e) {
-            return false;
-        }
-    }
-
-    private boolean validateCoordinates(String input) {
-        if (!COORDINATES_PATTERN.matcher(input).matches()) {
-            return false;
-        }
-        String[] parts = input.split(",");
-        try {
-            double lat = Double.parseDouble(parts[0].trim());
-            double lon = Double.parseDouble(parts[1].trim());
-            return lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180;
-        } catch (NumberFormatException e) {
-            return false;
-        }
     }
 } 

@@ -36,9 +36,8 @@ public class MongoConfig extends AbstractReactiveMongoConfiguration {
 
     @Override
     public MongoClient reactiveMongoClient() {
-        if (mongoUri == null || mongoUri.isEmpty() || mongoUri.startsWith("${")) {
-            logger.warn("MongoDB URI not properly resolved, using default local connection");
-            mongoUri = "mongodb://localhost:27017/tripplanner";
+        if (mongoUri == null || mongoUri.isEmpty()) {
+            throw new IllegalStateException("MongoDB URI is not configured");
         }
         
         logger.info("Using MongoDB URI: {}", mongoUri);

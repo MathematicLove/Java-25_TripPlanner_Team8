@@ -26,4 +26,10 @@ public interface UserDAO {
     Flux<Trip> getFinishedTrips(Long chatId);
 
     Mono<Void> updateUserLocation(Long chatId, double latitude, double longitude);
+
+    Mono<User> getUserByChatId(Long chatId);
+
+    Mono<Void> addToTripHistory(Long chatId, String tripId);
+    Mono<Void> removeFromPlannedTrips(Long chatId, String tripId);
+    Mono<Void> setOngoingTrip(Long chatId, String tripId);
 }

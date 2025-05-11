@@ -21,6 +21,8 @@ public class UserDBO {
     private List<ObjectId> currentTrips;  // Trips that are not finished yet
     private List<ObjectId> tripHistory;
 
+    private List<ObjectId> points;
+
     // Конструкторы
     public UserDBO() {}
 
@@ -89,5 +91,13 @@ public class UserDBO {
 
     public void setTripHistory(List<ObjectId> tripHistory) {
         this.tripHistory = tripHistory;
+    }
+
+    public List<ObjectId> getPoints() {
+        return points;
+    }
+
+    public void setPoints(List<ObjectId> points) {
+        this.points = points;
     }
 }

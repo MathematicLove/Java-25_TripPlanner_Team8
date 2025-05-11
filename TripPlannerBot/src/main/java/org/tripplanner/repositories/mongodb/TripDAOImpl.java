@@ -4,6 +4,8 @@ import java.time.LocalDate;
 import java.util.Collections;
 
 import org.bson.types.ObjectId;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -28,6 +30,7 @@ public class TripDAOImpl implements TripDAO {
     private final RouteMapper routeMapper;
     private final PointDAO pointDAO;
     private final RouteDAO routeDAO;
+    private static final Logger logger = LoggerFactory.getLogger(TripDAOImpl.class);
     @Autowired
     public TripDAOImpl(ReactiveMongoTemplate mongoTemplate,
                        TripMapper tripMapper,
@@ -63,14 +66,14 @@ public class TripDAOImpl implements TripDAO {
     @Override
     public Mono<Trip> addPoint(String tripId, String pointId) {
         try {
-            ObjectId tripObjectId = new ObjectId(tripId);
-            ObjectId pointObjectId = new ObjectId(pointId);
+        ObjectId tripObjectId = new ObjectId(tripId);
+        ObjectId pointObjectId = new ObjectId(pointId);
 
-            Query query = Query.query(Criteria.where("_id").is(tripObjectId));
-            Update update = new Update().addToSet("points", pointObjectId);
+        Query query = Query.query(Criteria.where("_id").is(tripObjectId));
+        Update update = new Update().addToSet("points", pointObjectId);
 
-            return mongoTemplate.findAndModify(query, update, TripDBO.class)
-                    .map(tripMapper::fromDbo);
+        return mongoTemplate.findAndModify(query, update, TripDBO.class)
+                .map(tripMapper::fromDbo);
         } catch (IllegalArgumentException e) {
             return Mono.error(new IllegalArgumentException("Invalid ObjectId format: " + e.getMessage()));
         }
@@ -157,6 +160,83 @@ public class TripDAOImpl implements TripDAO {
     public Flux<Trip> getAllTrips() {
         return mongoTemplate.findAll(TripDBO.class)
                 .map(tripMapper::fromDbo);
+    }
+
+    public Mono<Trip> addNoteToTrip(String tripId, String note) {
+        try {
+            ObjectId id = new ObjectId(tripId);
+            Query query = new Query(Criteria.where("_id").is(id));
+            Update update = new Update().push("notes", note);
+            
+            return mongoTemplate.findAndModify(query, update, TripDBO.class)
+                    .switchIfEmpty(Mono.error(new RuntimeException("Trip not found with ID: " + tripId)))
+                    .map(tripMapper::fromDbo)
+                    .onErrorResume(e -> {
+                        logger.error("Error adding note to trip {}: {}", tripId, e.getMessage());
+                        return Mono.error(e);
+                    });
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid trip ID format: {}", tripId);
+            return Mono.error(new RuntimeException("Invalid trip ID format"));
+        }
+    }
+
+    @Override
+    public Mono<Trip> updateTripStatus(String tripId, String status) {
+        try {
+            ObjectId id = new ObjectId(tripId);
+            Query query = new Query(Criteria.where("_id").is(id));
+            
+            // Сначала получаем текущую поездку
+            return mongoTemplate.findOne(query, TripDBO.class)
+                    .switchIfEmpty(Mono.error(new RuntimeException("Trip not found with ID: " + tripId)))
+                    .flatMap(tripDBO -> {
+                        // Обновляем только статус, сохраняя все остальные данные
+                        Update update = new Update()
+                                .set("status", status)
+                                .set("name", tripDBO.getName())
+                                .set("startDate", tripDBO.getStartDate())
+                                .set("endDate", tripDBO.getEndDate())
+                                .set("rating", tripDBO.getRating())
+                                .set("notes", tripDBO.getNotes())
+                                .set("points", tripDBO.getPoints())
+                                .set("routes", tripDBO.getRoutes())
+                                .set("startPoint", tripDBO.getStartPoint());
+
+                        return mongoTemplate.findAndModify(query, update, TripDBO.class)
+                                .map(tripMapper::fromDbo);
+                    })
+                    .onErrorResume(e -> {
+                        logger.error("Error updating trip status for trip {}: {}", tripId, e.getMessage());
+                        return Mono.error(e);
+                    });
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid trip ID format: {}", tripId);
+            return Mono.error(new RuntimeException("Invalid trip ID format"));
+        }
+    }
+
+    @Override
+    public Mono<Point> markPointVisited(String tripId, String pointId) {
+        try {
+            ObjectId tripObjectId = new ObjectId(tripId);
+            ObjectId pointObjectId = new ObjectId(pointId);
+
+            // First get the point to mark it as visited
+            return mongoTemplate.findById(pointObjectId, PointDBO.class)
+                    .switchIfEmpty(Mono.error(new RuntimeException("Point not found with ID: " + pointId)))
+                    .flatMap(pointDBO -> {
+                        // Update the point's visited status
+                        Query pointQuery = Query.query(Criteria.where("_id").is(pointObjectId));
+                        Update pointUpdate = new Update().set("visited", true);
+                        
+                        return mongoTemplate.findAndModify(pointQuery, pointUpdate, PointDBO.class)
+                                .map(pointMapper::fromDbo);
+                    });
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid ObjectId format: {}", e.getMessage());
+            return Mono.error(new RuntimeException("Invalid ObjectId format"));
+        }
     }
 
     // Остальные методы будут добавлены позже

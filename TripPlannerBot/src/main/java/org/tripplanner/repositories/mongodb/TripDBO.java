@@ -22,11 +22,14 @@ public class TripDBO {
     private ObjectId startPoint;
     private List<ObjectId> points;
     private List<ObjectId> routes;
+    private String status;
+    private List<String> notes;
 
     // Конструкторы
     public TripDBO() {
         this.points = Collections.emptyList();
         this.routes = Collections.emptyList();
+        this.notes = Collections.emptyList();
     }
 
     public TripDBO(String name, LocalDate startDate, LocalDate endDate, Integer rating,
@@ -38,6 +41,7 @@ public class TripDBO {
         this.startPoint = startPoint;
         this.points = points != null ? points : Collections.emptyList();
         this.routes = routes != null ? routes : Collections.emptyList();
+        this.notes = Collections.emptyList();
     }
 
     // Getters and Setters
@@ -103,5 +107,21 @@ public class TripDBO {
 
     public void setRoutes(List<ObjectId> routes) {
         this.routes = routes;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public List<String> getNotes() {
+        return notes;
+    }
+
+    public void setNotes(List<String> notes) {
+        this.notes = notes;
     }
 }
