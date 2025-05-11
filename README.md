@@ -1,4 +1,4 @@
-# Trip Planner Bot
+# Trip Planner Bot (Team №8)
 
 Telegram бот для планирования путешествий с административной панелью и API.
 
