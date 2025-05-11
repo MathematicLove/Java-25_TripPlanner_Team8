@@ -89,7 +89,6 @@ tasks.withType<JavaExec> {
     jvmArgs = listOf("-Dfile.encoding=UTF-8", "-Dspring.profiles.active=local")
 }
 
-// Добавляем задачу для генерации документации
 tasks.register("generateDocs") {
     group = "documentation"
     description = "Generates API documentation and diagrams"

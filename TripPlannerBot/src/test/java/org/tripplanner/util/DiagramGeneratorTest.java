@@ -16,14 +16,12 @@ public class DiagramGeneratorTest {
         DiagramGenerator diagramGenerator = new DiagramGenerator();
         System.out.println("DiagramGenerator created");
         
-        // Генерируем диаграмму для тестового модуля
-        String outputPath = "docs/diagrams/test-module.png";
+        String outputPath = "src/test/resources/diagrams/test-module.png";
         System.out.println("Generating diagram to: " + outputPath);
         
         diagramGenerator.generateModuleDiagram("TestModule", outputPath);
         System.out.println("Diagram generation completed");
 
-        // Проверяем, что файл создан
         File diagramFile = new File(outputPath);
         System.out.println("Checking if file exists: " + diagramFile.getAbsolutePath());
         assertTrue(diagramFile.exists(), "Диаграмма должна быть создана");
