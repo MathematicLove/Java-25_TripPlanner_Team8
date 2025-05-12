@@ -195,7 +195,7 @@ public class TelegramBotController {
 
         if (nextStep == null) {
             // Если следующего шага нет, выполняем команду и завершаем диалог
-            return executeCommand(chatId, state.command)
+            return executeCommand(chatId, state.command, input)
                     .doFinally(signalType -> dialogState.endDialog(chatId));
         }
 
@@ -206,7 +206,7 @@ public class TelegramBotController {
         return Mono.just(dialogState.getPrompt(chatId));
     }
 
-    private Mono<String> executeCommand(Long chatId, DialogState.Command command) {
+    private Mono<String> executeCommand(Long chatId, DialogState.Command command, String messageText) {
         return switch (command) {
             case PLAN_TRIP -> {
                 String name = (String) dialogState.getData(chatId, "name");
@@ -245,13 +245,11 @@ public class TelegramBotController {
                 String tripName = (String) dialogState.getData(chatId, "tripName");
                 String pointName = (String) dialogState.getData(chatId, "pointName");
                 if (tripName == null) {
-                    dialogState.setData(chatId, "tripName", pointName);
-                    yield Mono.just("Введите название поездки:");
-                } else if (pointName == null) {
-                    dialogState.setData(chatId, "pointName", pointName);
+                    dialogState.setData(chatId, "tripName", messageText);
                     yield Mono.just("Какую точку вы посетили?");
-                } else {
-                    yield tripHelper.markPointVisited(tripName, pointName)
+                } else if (pointName == null) {
+                    dialogState.setData(chatId, "pointName", messageText);
+                    yield tripHelperService.markPointVisited(chatId, tripName, messageText)
                             .map(point -> "Точка '" + point.getName() + "' отмечена как посещенная")
                             .onErrorResume(e -> {
                                 if (e.getMessage().contains("Поездка с названием")) {
@@ -260,7 +258,20 @@ public class TelegramBotController {
                                     return Mono.just("Упс! Не нашлось такой точки. Если хотите создать точку: /addpoint");
                                 }
                                 return Mono.just("Ошибка: " + e.getMessage());
-                            });
+                            })
+                            .doFinally(signalType -> dialogState.endDialog(chatId));
+                } else {
+                    yield tripHelperService.markPointVisited(chatId, tripName, pointName)
+                            .map(point -> "Точка '" + point.getName() + "' отмечена как посещенная")
+                            .onErrorResume(e -> {
+                                if (e.getMessage().contains("Поездка с названием")) {
+                                    return Mono.just("Упс! Не нашлось такой поездки. Для просмотра поездок: /showplanned");
+                                } else if (e.getMessage().contains("Точка с названием")) {
+                                    return Mono.just("Упс! Не нашлось такой точки. Если хотите создать точку: /addpoint");
+                                }
+                                return Mono.just("Ошибка: " + e.getMessage());
+                            })
+                            .doFinally(signalType -> dialogState.endDialog(chatId));
                 }
             }
             case RATE_FINISHED -> {

@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import org.bson.types.ObjectId;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.mongodb.core.ReactiveMongoTemplate;
 import org.springframework.stereotype.Component;
 import org.tripplanner.domain.Point;
 import org.tripplanner.domain.Route;
@@ -15,10 +17,13 @@ public class TripMapper {
 
     private final PointMapper pointMapper;
     private final RouteMapper routeMapper;
+    private final ReactiveMongoTemplate mongoTemplate;
 
-    public TripMapper(PointMapper pointMapper, RouteMapper routeMapper) {
+    @Autowired
+    public TripMapper(PointMapper pointMapper, RouteMapper routeMapper, ReactiveMongoTemplate mongoTemplate) {
         this.pointMapper = pointMapper;
         this.routeMapper = routeMapper;
+        this.mongoTemplate = mongoTemplate;
     }
 
     public TripDBO toDbo(Trip trip) {
@@ -79,16 +84,8 @@ public class TripMapper {
             trip.setStartPoint(point);
         }
 
-        // Маппинг points
-        trip.setPoints(dbo.getPoints() != null ? 
-                dbo.getPoints().stream()
-                        .map(pointId -> {
-                            Point point = new Point();
-                            point.setId(pointId.toHexString());
-                            return point;
-                        })
-                        .collect(Collectors.toList()) : 
-                Collections.emptyList());
+        // Маппинг points - теперь мы не загружаем точки здесь, так как это будет сделано в TripHelperService
+        trip.setPoints(Collections.emptyList());
 
         // Маппинг routes
         trip.setRoutes(dbo.getRoutes() != null ?

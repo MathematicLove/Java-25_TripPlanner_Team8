@@ -52,8 +52,8 @@ public class TripHelperController {
                 .onErrorResume(e -> Mono.just(e.getMessage()));
     }
 
-    public Mono<String> handleMarkPoint(String tripName, String pointName) {
-        return service.markPointVisited(tripName, pointName)
+    public Mono<String> handleMarkPoint(Long chatId, String tripName, String pointName) {
+        return service.markPointVisited(chatId, tripName, pointName)
                 .map(p -> "Точка \"" + p.getName() + "\" отмечена как посещённая.")
                 .onErrorResume(e -> Mono.just("Ошибка: " + e.getMessage()));
     }
@@ -64,7 +64,7 @@ public class TripHelperController {
         return service.updateUserLocation(chatId, latitude, longitude);
     }
 
-    public Mono<Point> markPointVisited(String tripName, String pointName) {
-        return service.markPointVisited(tripName, pointName);
+    public Mono<Point> markPointVisited(Long chatId, String tripName, String pointName) {
+        return service.markPointVisited(chatId, tripName, pointName);
     }
 }

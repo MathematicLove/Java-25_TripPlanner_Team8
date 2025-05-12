@@ -69,9 +69,9 @@ public class TripHelperService {
         return tripDAO.getAllPoints(tripId);
     }
 
-    public Mono<Point> markPointVisited(String tripName, String pointName) {
-        logger.info("Marking point {} as visited in trip {}", pointName, tripName);
-        return userDAO.getAllUsers()
+    public Mono<Point> markPointVisited(Long chatId, String tripName, String pointName) {
+        logger.info("Marking point {} as visited in trip {} for user {}", pointName, tripName, chatId);
+        return userDAO.getUserByChatId(chatId)
                 .flatMap(user -> {
                     logger.info("Checking user's trips for trip: {}", tripName);
                     return Flux.concat(
@@ -79,23 +79,36 @@ public class TripHelperService {
                             Flux.fromIterable(user.getCurrentTrips()),
                             Flux.fromIterable(user.getTripHistory())
                         )
-                        .flatMap(trip -> tripDAO.getTrip(trip.getId()))
+                        .flatMap(trip -> {
+                            logger.info("Looking for trip with ID: {}", trip.getId());
+                            return tripDAO.getTrip(trip.getId());
+                        })
+                        .doOnNext(trip -> {
+                            logger.info("Found trip in DB: \"{}\" with ID: {}", trip.getName(), trip.getId());
+                        })
                         .filter(trip -> trip.getName().equals(tripName))
                         .next()
                         .switchIfEmpty(Mono.error(new RuntimeException("Поездка с названием '" + tripName + "' не найдена")))
                         .flatMap(trip -> {
-                            logger.info("Found trip, checking points");
-                            return tripDAO.getAllPoints(trip.getId())
-                                    .filter(point -> point.getName().equals(pointName))
+                            logger.info("Found trip {}, getting points", trip.getName());
+                            return pointDAO.getPointsByTripId(trip.getId())
+                                    .doOnNext(point -> {
+                                        logger.info("Found point in trip: name={}, id={}", point.getName(), point.getId());
+                                    })
+                                    .filter(point -> {
+                                        boolean matches = point.getName().equals(pointName);
+                                        logger.info("Comparing point names: '{}' with '{}', matches: {}", 
+                                            point.getName(), pointName, matches);
+                                        return matches;
+                                    })
                                     .next()
                                     .switchIfEmpty(Mono.error(new RuntimeException("Точка с названием '" + pointName + "' не найдена")))
                                     .flatMap(point -> {
-                                        logger.info("Found point, marking as visited");
+                                        logger.info("Found matching point {}, marking as visited", point.getName());
                                         return pointDAO.markPointVisited(point.getId());
                                     });
                         });
-                })
-                .next();
+                });
     }
 
     public Mono<Point> addNoteToPoint(String pointId, String note) {
