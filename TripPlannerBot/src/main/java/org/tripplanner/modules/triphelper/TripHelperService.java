@@ -215,6 +215,9 @@ public class TripHelperService {
 
     public Mono<String> addNote(Long chatId, String tripName, String note) {
         logger.info("Adding note to trip {} for user {}: {}", tripName, chatId, note);
+        if (note == null || note.trim().isEmpty()) {
+            return Mono.just("Заметка не может быть пустой");
+        }
         return userDAO.getUserByChatId(chatId)
                 .flatMap(user -> {
                     logger.info("Found user with planned trips: {}", user.getPlannedTrips());
@@ -238,7 +241,7 @@ public class TripHelperService {
                 })
                 .onErrorResume(e -> {
                     logger.error("Error adding note to trip {} for user {}: {}", tripName, chatId, e.getMessage());
-                    return Mono.error(e);
+                    return Mono.just(e.getMessage());
                 });
     }
 }

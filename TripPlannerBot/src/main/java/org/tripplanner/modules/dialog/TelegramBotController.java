@@ -173,6 +173,8 @@ public class TelegramBotController {
             }
         } else if (state.currentStep == DialogState.Step.WAITING_TRIP_NAME) {
             dialogState.setData(chatId, "tripName", input);
+        } else if (state.currentStep == DialogState.Step.WAITING_NOTE) {
+            dialogState.setData(chatId, "note", input);
         } else {
             String key;
             switch (state.currentStep) {
@@ -240,16 +242,25 @@ public class TelegramBotController {
                 yield tripHelper.handleAddNote(chatId, tripName, note);
             }
             case MARK_POINT -> {
-                String pointName = (String) dialogState.getData(chatId, "pointName");
                 String tripName = (String) dialogState.getData(chatId, "tripName");
+                String pointName = (String) dialogState.getData(chatId, "pointName");
                 if (tripName == null) {
                     dialogState.setData(chatId, "tripName", pointName);
                     yield Mono.just("Введите название поездки:");
-                } else {
+                } else if (pointName == null) {
                     dialogState.setData(chatId, "pointName", pointName);
+                    yield Mono.just("Какую точку вы посетили?");
+                } else {
                     yield tripHelper.markPointVisited(tripName, pointName)
                             .map(point -> "Точка '" + point.getName() + "' отмечена как посещенная")
-                            .onErrorResume(e -> Mono.just("Ошибка: " + e.getMessage()));
+                            .onErrorResume(e -> {
+                                if (e.getMessage().contains("Поездка с названием")) {
+                                    return Mono.just("Упс! Не нашлось такой поездки. Для просмотра поездок: /showplanned");
+                                } else if (e.getMessage().contains("Точка с названием")) {
+                                    return Mono.just("Упс! Не нашлось такой точки. Если хотите создать точку: /addpoint");
+                                }
+                                return Mono.just("Ошибка: " + e.getMessage());
+                            });
                 }
             }
             case RATE_FINISHED -> {
