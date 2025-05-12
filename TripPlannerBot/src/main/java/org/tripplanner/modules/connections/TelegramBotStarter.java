@@ -57,13 +57,9 @@ public class TelegramBotStarter {
                     Thread.sleep(RETRY_DELAY_SECONDS * 1000L);
                 }
 
-                // Create new bot instance
                 bot = new TripPlannerBot(botToken, botUsername, controller);
-                
-                // Create new API instance
                 botsApi = new TelegramBotsApi(DefaultBotSession.class);
 
-                // Delete webhook before starting
                 try {
                     DeleteWebhook deleteWebhook = new DeleteWebhook();
                     deleteWebhook.setDropPendingUpdates(true);
@@ -73,11 +69,10 @@ public class TelegramBotStarter {
                 } catch (Exception e) {
                     logger.warn("Failed to delete webhook: {}", e.getMessage());
                 }
-                
-                // Register bot
+
                 session = (DefaultBotSession) botsApi.registerBot(bot);
                 
-                logger.info("✅ Bot started by: {}", authors);
+                logger.info("Bot started by: {}", authors);
                 return;
             } catch (Exception e) {
                 retryCount++;

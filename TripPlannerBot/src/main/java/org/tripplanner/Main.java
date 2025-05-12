@@ -16,12 +16,9 @@ import reactor.netty.http.server.HttpServer;
 
 public class Main {
     public static void main(String[] args) {
-        System.out.println("🚀 Запуск TripPlanner...");
+        System.out.println("Запуск TripPlanner...");
 
-        // Инициализация Spring контекста
         AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
-        
-        // Загрузка properties файла
         try {
             Properties props = new Properties();
             props.load(Main.class.getClassLoader().getResourceAsStream("application.properties"));
@@ -34,13 +31,11 @@ public class Main {
         context.register(WebConfig.class, SecurityConfig.class, MongoConfig.class);
         context.refresh();
 
-        // Запуск WebFlux сервера
         DisposableServer server = HttpServer.create()
                 .port(8080)
                 .handle(new ReactorHttpHandlerAdapter(WebHttpHandlerBuilder.applicationContext(context).build()))
                 .bindNow();
 
-        // Добавляем обработчик завершения работы
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             System.out.println("🛑 Завершение работы...");
             try {
@@ -53,8 +48,7 @@ public class Main {
             context.close();
             System.out.println("✅ Приложение остановлено");
         }));
-
-        // Блокируем главный поток до завершения работы сервера
+        
         server.onDispose().block();
     }
 }

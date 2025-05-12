@@ -48,7 +48,6 @@ public class TelegramBotController {
             }
         }
 
-        // Обработка команд
         String[] parts = messageText.trim().split("\\s+");
         String command = parts[0].toLowerCase();
 
@@ -134,14 +133,14 @@ public class TelegramBotController {
                             "/finishplanning — завершить планирование\n" +
                             "/deleteplanned — удалить поездку\n" +
                             "\n🗺 Помощник в поездке:\n" +
-                            "/showongoingtrip — текущая поездка\n" +
-                            "/addnote — добавить заметку к точке\n" +
+                            "/showongoingtrip — сегодняшняя поездка\n" +
+                            "/addnote — добавить заметку к поездке\n" +
                             "/markpoint — отметить точку посещённой\n" +
                             "/setongoing — начать отслеживание геопозиции\n" +
                             "\n📖 История:\n" +
                             "/triphistory — завершённые поездки\n" +
-                            "/finisheddetails — подробности поездки\n" +
-                            "/ratefinished — оценить поездку"
+                            "/finisheddetails — подробности поездок\n" +
+                            "/ratefinished — оценить завершенную поездку"
             );
 
             default -> Mono.just("Неизвестная команда: " + command);
@@ -154,13 +153,11 @@ public class TelegramBotController {
             return Mono.just("Нет активного диалога. Используйте команды для начала работы.");
         }
 
-        // Validate input
         String validationError = dialogState.validateInput(chatId, input);
         if (validationError != null) {
             return Mono.just(validationError);
         }
 
-        // Save input data
         if (state.currentStep == DialogState.Step.WAITING_RATING) {
             try {
                 int rating = Integer.parseInt(input);
@@ -190,19 +187,14 @@ public class TelegramBotController {
             dialogState.setData(chatId, key, input);
         }
 
-        // Get next step
         DialogState.Step nextStep = dialogState.getNextStep(state.command, state.currentStep);
 
         if (nextStep == null) {
-            // Если следующего шага нет, выполняем команду и завершаем диалог
             return executeCommand(chatId, state.command, input)
                     .doFinally(signalType -> dialogState.endDialog(chatId));
         }
 
-        // Обновляем текущий шаг
         state.currentStep = nextStep;
-
-        // Иначе возвращаем следующий вопрос
         return Mono.just(dialogState.getPrompt(chatId));
     }
 
@@ -335,7 +327,6 @@ public class TelegramBotController {
                 return Mono.just("Ошибка при обработке геопозиции. Пожалуйста, попробуйте снова.");
             })
             .doFinally(signalType -> {
-                // Завершаем диалог после получения геопозиции
                 dialogState.endDialog(chatId);
             });
     }
