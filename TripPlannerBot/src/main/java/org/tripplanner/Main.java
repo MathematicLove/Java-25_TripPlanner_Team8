@@ -37,18 +37,17 @@ public class Main {
                 .bindNow();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            System.out.println("🛑 Завершение работы...");
+            System.out.println("Завершение работы");
             try {
-                // Даем время на корректное завершение работы бота
                 Thread.sleep(5000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
             server.dispose();
             context.close();
-            System.out.println("✅ Приложение остановлено");
+            System.out.println("остановлено");
         }));
-        
+
         server.onDispose().block();
     }
 }
