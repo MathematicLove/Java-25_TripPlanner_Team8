@@ -11,8 +11,7 @@ public class DiagramGeneratorTest {
     @Test
     public void testGenerateModuleDiagram() throws Exception {
         System.out.println("Starting test...");
-        
-        // Создаем экземпляр генератора диаграмм
+
         DiagramGenerator diagramGenerator = new DiagramGenerator();
         System.out.println("DiagramGenerator created");
         
